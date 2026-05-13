@@ -1,0 +1,29 @@
+# Dados brutos e bancos de dados
+/dados-brutos/
+/backend/cnpj.db
+/backend/cnpj_demo.db
+/backend/*.db
+
+# Segredos
+/backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# Claude
+/.claude/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body { font-family: "Inter", sans-serif; }
+}
+
+@layer utilities {
+  .ambient-shadow {
+    box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+  }
+  .ambient-shadow-hover:hover {
+    box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+    transform: translateY(-2px);
+  }
+  .glass-dropdown {
+    background-color: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  .material-symbols-outlined {
+    font-family: "Material Symbols Outlined";
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+  }
+}

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+
+<html class="light" lang="pt-BR"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CorpIntel - Seleção de Pesquisa</title>
+<!-- Google Fonts: Inter -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#004ac6",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed": "#dae2fd",
+                        "surface-container-high": "#e6e8ea",
+                        "on-tertiary": "#ffffff",
+                        "primary-container": "#2563eb",
+                        "on-surface": "#191c1e",
+                        "surface-container-lowest": "#ffffff",
+                        "on-surface-variant": "#434655",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d8dadc",
+                        "tertiary-fixed": "#d3e4fe",
+                        "on-tertiary-fixed-variant": "#38485d",
+                        "secondary-fixed-dim": "#bec6e0",
+                        "surface-variant": "#e0e3e5",
+                        "outline-variant": "#c3c6d7",
+                        "inverse-on-surface": "#eff1f3",
+                        "surface-container": "#eceef0",
+                        "on-secondary-fixed-variant": "#3f465c",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-error": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "outline": "#737686",
+                        "surface-tint": "#0053db",
+                        "secondary-container": "#dae2fd",
+                        "tertiary-container": "#5e6e85",
+                        "error": "#ba1a1a",
+                        "on-primary-container": "#eeefff",
+                        "inverse-surface": "#2d3133",
+                        "on-primary-fixed": "#00174b",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-tertiary-fixed": "#0b1c30",
+                        "tertiary": "#46566c",
+                        "surface": "#f7f9fb",
+                        "on-tertiary-container": "#e9f0ff",
+                        "on-secondary-fixed": "#131b2e",
+                        "primary-fixed": "#dbe1ff",
+                        "surface-bright": "#f7f9fb",
+                        "on-primary": "#ffffff",
+                        "secondary": "#565e74",
+                        "on-secondary-container": "#5c647a",
+                        "inverse-primary": "#b4c5ff",
+                        "surface-container-low": "#f2f4f6",
+                        "tertiary-fixed-dim": "#b7c8e1",
+                        "background": "#f7f9fb",
+                        "on-background": "#191c1e"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "space-md": "16px",
+                        "space-sm": "8px",
+                        "gutter": "24px",
+                        "space-xl": "48px",
+                        "container-max": "1440px",
+                        "space-lg": "24px",
+                        "unit": "8px",
+                        "space-xs": "4px",
+                        "margin-page": "40px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter", "sans-serif"],
+                        "body-md": ["Inter", "sans-serif"],
+                        "label-caps": ["Inter", "sans-serif"],
+                        "body-sm": ["Inter", "sans-serif"],
+                        "body-lg": ["Inter", "sans-serif"],
+                        "headline-sm": ["Inter", "sans-serif"],
+                        "display-lg": ["Inter", "sans-serif"],
+                        "mono-data": ["monospace"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "label-caps": ["11px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "700" }],
+                        "body-sm": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "body-lg": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "headline-sm": ["18px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "mono-data": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style type="text/tailwindcss">
+        @layer utilities {
+            .ambient-shadow {
+                box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+            }
+            .ambient-shadow-hover {
+                box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+            }
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased min-h-screen flex">
+<!-- SideNavBar Component (From JSON) -->
+<aside class="fixed left-0 top-0 h-full flex flex-col py-6 px-4 z-40 bg-slate-50 dark:bg-slate-950 h-screen w-64 border-r border-r border-slate-200 dark:border-slate-800 transition-transform duration-300 ease-in-out hidden md:flex">
+<!-- Header -->
+<div class="flex items-center gap-3 mb-8 px-2">
+<img alt="Corporate Logo" class="w-8 h-8 rounded-lg" data-alt="A sleek, minimalist corporate logo designed for a high-end intelligence suite. The logo features sharp geometric lines forming a stylized letter in a dark slate color. It is set against a pure white background, embodying precision, authority, and modern corporate aesthetics. Lighting is flat and graphic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuADLWfUzozrMQ_hZQO64DZrdOaXKDngiLuQXPyDz-2jORT8-dEGtCoJxX8vfiA_EtYLt47NMfSg40LkImuqlES-gYnu8pdfKSXUlb-qkHlEL7bjl11h7zDMtWnbyUNrjuIuU4zgJpwsmIPizqZlBRG-DXXO5tg-sFVcjRIMOqaUlUwABuCbqUe40etb1Ar5S85OZHBG3OUGDDCIxogOJr8yyQKSqLbb9X1o7ajsbcb24Llmb_9GVW7KRMJ0FvSgGvAMfo0OwvAfq_zM"/>
+<div>
+<h2 class="text-lg font-black text-slate-900 dark:text-white leading-tight">Intelligence Suite</h2>
+<p class="font-inter text-sm font-semibold tracking-wide uppercase text-slate-500">Enterprise Tier</p>
+</div>
+</div>
+<!-- Navigation Links -->
+<nav class="flex-1 space-y-1">
+<!-- Active Tab: Company Search (Closest to Search intent) -->
+<a class="flex items-center px-3 py-2.5 font-inter text-sm font-semibold tracking-wide uppercase bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm border-l-4 border-blue-600 rounded-r-lg group" href="#">
+<span class="material-symbols-outlined mr-3 text-lg" style="font-variation-settings: 'FILL' 1;">search</span>
+                Company Search
+            </a>
+<!-- Inactive Tabs -->
+<a class="flex items-center px-3 py-2.5 font-inter text-sm font-semibold tracking-wide uppercase text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 group rounded-r-lg" href="#">
+<span class="material-symbols-outlined mr-3 text-lg">query_stats</span>
+                Market Analytics
+            </a>
+<a class="flex items-center px-3 py-2.5 font-inter text-sm font-semibold tracking-wide uppercase text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 group rounded-r-lg" href="#">
+<span class="material-symbols-outlined mr-3 text-lg">verified_user</span>
+                Due Diligence
+            </a>
+<a class="flex items-center px-3 py-2.5 font-inter text-sm font-semibold tracking-wide uppercase text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 group rounded-r-lg" href="#">
+<span class="material-symbols-outlined mr-3 text-lg">account_balance_wallet</span>
+                Portfolio
+            </a>
+<a class="flex items-center px-3 py-2.5 font-inter text-sm font-semibold tracking-wide uppercase text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 group rounded-r-lg" href="#">
+<span class="material-symbols-outlined mr-3 text-lg">inventory_2</span>
+                Archive
+            </a>
+</nav>
+<!-- Footer Actions -->
+<div class="mt-auto space-y-1 pt-6 border-t border-slate-200 dark:border-slate-800">
+<a class="flex items-center px-3 py-2.5 font-inter text-sm font-semibold tracking-wide uppercase text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 group rounded-r-lg" href="#">
+<span class="material-symbols-outlined mr-3 text-lg">help</span>
+                Help Center
+            </a>
+<a class="flex items-center px-3 py-2.5 font-inter text-sm font-semibold tracking-wide uppercase text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 group rounded-r-lg" href="#">
+<span class="material-symbols-outlined mr-3 text-lg">support_agent</span>
+                Contact Support
+            </a>
+<div class="px-3 pt-4">
+<button class="w-full py-2 px-4 bg-primary text-on-primary font-label-caps rounded-DEFAULT shadow-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">bolt</span>
+                    Upgrade Plan
+                </button>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 md:ml-64 bg-background min-h-screen flex flex-col items-center justify-center p-margin-page relative overflow-hidden">
+<!-- Subtle Background Decorative Element -->
+<div class="absolute top-0 right-0 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+<div class="w-full max-w-container-max flex flex-col items-center relative z-10">
+<!-- Header Section -->
+<header class="text-center mb-space-xl max-w-2xl">
+<h1 class="font-display-lg text-display-lg text-on-surface mb-space-sm tracking-tight">Iniciar Pesquisa</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Selecione o escopo da sua investigação. O sistema otimizará as fontes de dados e os filtros com base na entidade principal escolhida.</p>
+</header>
+<!-- Action Cards Container -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-lg w-full max-w-4xl">
+<!-- Card: Pesquisar por Sócio -->
+<button class="group relative flex flex-col items-center justify-center p-space-xl bg-surface-container-lowest rounded-xl ambient-shadow border border-outline-variant/30 hover:-translate-y-1 hover:ambient-shadow-hover transition-all duration-300 text-center min-h-[320px] overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+<!-- Hover Highlight Glow -->
+<div class="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors duration-500 pointer-events-none"></div>
+<!-- Icon Container -->
+<div class="w-16 h-16 rounded-full bg-secondary-fixed flex items-center justify-center mb-space-lg group-hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined text-[32px] text-primary" style="font-variation-settings: 'FILL' 1;">person_search</span>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-space-sm group-hover:text-primary transition-colors">Pesquisar por Sócio</h2>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-xs">
+                        Investigue perfis individuais, identifique conexões de rede e analise afiliações corporativas detalhadas.
+                    </p>
+<!-- Ghost Button Indicator -->
+<div class="mt-space-lg flex items-center gap-1 font-label-caps text-label-caps text-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        INICIAR CONSULTA
+                        <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</div>
+</button>
+<!-- Card: Pesquisar por Empresa -->
+<button class="group relative flex flex-col items-center justify-center p-space-xl bg-surface-container-lowest rounded-xl ambient-shadow border border-outline-variant/30 hover:-translate-y-1 hover:ambient-shadow-hover transition-all duration-300 text-center min-h-[320px] overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+<!-- Hover Highlight Glow -->
+<div class="absolute -left-20 -bottom-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors duration-500 pointer-events-none"></div>
+<!-- Icon Container -->
+<div class="w-16 h-16 rounded-full bg-secondary-fixed flex items-center justify-center mb-space-lg group-hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined text-[32px] text-primary" style="font-variation-settings: 'FILL' 1;">domain</span>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-space-sm group-hover:text-primary transition-colors">Pesquisar por Empresa</h2>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-xs">
+                        Analise estruturas corporativas, acesse inteligência de mercado e revise relatórios históricos de due diligence.
+                    </p>
+<!-- Ghost Button Indicator -->
+<div class="mt-space-lg flex items-center gap-1 font-label-caps text-label-caps text-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        INICIAR CONSULTA
+                        <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</div>
+</button>
+</div>
+</div>
+</main>
+</body></html>

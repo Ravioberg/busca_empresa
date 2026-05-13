@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CorpIntel - Sign In</title>
+<!-- Google Fonts: Inter -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#004ac6",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed": "#dae2fd",
+                        "surface-container-high": "#e6e8ea",
+                        "on-tertiary": "#ffffff",
+                        "primary-container": "#2563eb",
+                        "on-surface": "#191c1e",
+                        "surface-container-lowest": "#ffffff",
+                        "on-surface-variant": "#434655",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d8dadc",
+                        "tertiary-fixed": "#d3e4fe",
+                        "on-tertiary-fixed-variant": "#38485d",
+                        "secondary-fixed-dim": "#bec6e0",
+                        "surface-variant": "#e0e3e5",
+                        "outline-variant": "#c3c6d7",
+                        "inverse-on-surface": "#eff1f3",
+                        "surface-container": "#eceef0",
+                        "on-secondary-fixed-variant": "#3f465c",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-error": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "outline": "#737686",
+                        "surface-tint": "#0053db",
+                        "secondary-container": "#dae2fd",
+                        "tertiary-container": "#5e6e85",
+                        "error": "#ba1a1a",
+                        "on-primary-container": "#eeefff",
+                        "inverse-surface": "#2d3133",
+                        "on-primary-fixed": "#00174b",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-tertiary-fixed": "#0b1c30",
+                        "tertiary": "#46566c",
+                        "surface": "#f7f9fb",
+                        "on-tertiary-container": "#e9f0ff",
+                        "on-secondary-fixed": "#131b2e",
+                        "primary-fixed": "#dbe1ff",
+                        "surface-bright": "#f7f9fb",
+                        "on-primary": "#ffffff",
+                        "secondary": "#565e74",
+                        "on-secondary-container": "#5c647a",
+                        "inverse-primary": "#b4c5ff",
+                        "surface-container-low": "#f2f4f6",
+                        "tertiary-fixed-dim": "#b7c8e1",
+                        "background": "#f7f9fb",
+                        "on-background": "#191c1e"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "space-md": "16px",
+                        "space-sm": "8px",
+                        "gutter": "24px",
+                        "space-xl": "48px",
+                        "container-max": "1440px",
+                        "space-lg": "24px",
+                        "unit": "8px",
+                        "space-xs": "4px",
+                        "margin-page": "40px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter", "sans-serif"],
+                        "body-md": ["Inter", "sans-serif"],
+                        "label-caps": ["Inter", "sans-serif"],
+                        "body-sm": ["Inter", "sans-serif"],
+                        "body-lg": ["Inter", "sans-serif"],
+                        "headline-sm": ["Inter", "sans-serif"],
+                        "display-lg": ["Inter", "sans-serif"],
+                        "mono-data": ["monospace"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "label-caps": ["11px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "700" }],
+                        "body-sm": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "body-lg": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "headline-sm": ["18px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "mono-data": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased min-h-screen flex overflow-hidden">
+<!-- Left visual column -->
+<div class="hidden lg:flex w-1/2 relative bg-tertiary-container items-end p-margin-page">
+<img alt="" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-60" data-alt="A macro photograph of a sleek, modern server rack or abstract data visualization with glowing blue and crisp white lights against a dark slate background. The image heavily conveys themes of high-speed data processing, sophisticated corporate intelligence, and enterprise-grade security. The lighting is precise, technical, and high-contrast, perfectly reflecting a pristine, professional light-mode SaaS aesthetic with deep corporate blue accents." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBiKmVECEWukECASLAc2kcU2dWLwZZvjGxVgsbpZ1DSFyTnUuAVSIjqqt7xjsj8ydJ7XeuJTK6tPDaKChq5RzSMzMkl3TnViz5j2RfFBkmnlULXlAw8rpxC9JyTgMqTV-VQ180LuFLg7cKscfBAaIJkU17lnXwa7hdc3jLesY2fDpSL4lwJONeWbIN3UmGhW01ikBOQUqvqRSd3ydKuuos6VRxoZvck39Xc9TJ_RzASNx78wRH8Nws0K5TTm3TMgy7krcxIdRHSnusR"/>
+<div class="absolute inset-0 bg-gradient-to-t from-[#0b1c30] to-transparent opacity-80"></div>
+<div class="relative z-10 w-full max-w-lg">
+<h2 class="font-display-lg text-display-lg text-on-tertiary mb-space-sm">Precision in every query.</h2>
+<p class="font-body-lg text-body-lg text-tertiary-fixed-dim">Access the world's most comprehensive corporate data graph. Designed for analysts who demand speed, accuracy, and absolute authority.</p>
+</div>
+</div>
+<!-- Right form column -->
+<div class="flex-1 flex flex-col justify-center items-center px-space-md sm:px-gutter bg-surface-container-lowest">
+<div class="w-full max-w-[380px]">
+<!-- Header -->
+<div class="mb-space-xl text-center sm:text-left">
+<div class="flex items-center justify-center sm:justify-start gap-space-sm mb-space-lg">
+<span class="material-symbols-outlined text-primary text-[28px]" style="font-variation-settings: 'FILL' 1;">query_stats</span>
+<span class="font-headline-md text-headline-md text-on-surface">CorpIntel</span>
+</div>
+<h1 class="font-headline-md text-headline-md text-on-surface mb-space-xs">Welcome back</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Sign in to your enterprise account to continue.</p>
+</div>
+<!-- Form -->
+<form class="space-y-space-md">
+<!-- Email Field -->
+<div>
+<label class="block font-label-caps text-label-caps text-on-surface-variant mb-space-xs uppercase" for="email">Work Email</label>
+<div class="relative">
+<span class="absolute inset-y-0 left-0 pl-space-sm flex items-center pointer-events-none text-outline">
+<span class="material-symbols-outlined text-[18px]">mail</span>
+</span>
+<input class="block w-full h-[40px] pl-10 pr-space-sm bg-surface-container-low border border-outline-variant rounded-DEFAULT text-on-surface font-body-md focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder-outline transition-colors" id="email" placeholder="name@company.com" required="" type="email"/>
+</div>
+</div>
+<!-- Password Field -->
+<div>
+<div class="flex items-center justify-between mb-space-xs">
+<label class="block font-label-caps text-label-caps text-on-surface-variant uppercase" for="password">Password</label>
+<a class="font-body-sm text-body-sm text-primary hover:text-on-primary-fixed-variant transition-colors" href="#">Forgot password?</a>
+</div>
+<div class="relative">
+<span class="absolute inset-y-0 left-0 pl-space-sm flex items-center pointer-events-none text-outline">
+<span class="material-symbols-outlined text-[18px]">lock</span>
+</span>
+<input class="block w-full h-[40px] pl-10 pr-10 bg-surface-container-low border border-outline-variant rounded-DEFAULT text-on-surface font-body-md focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder-outline transition-colors" id="password" placeholder="••••••••" required="" type="password"/>
+</div>
+</div>
+<!-- Submit Action -->
+<div class="pt-space-sm">
+<button class="w-full h-[40px] bg-primary text-on-primary font-body-md rounded-DEFAULT shadow-sm hover:bg-surface-tint transition-colors flex items-center justify-center gap-space-sm" type="button">
+<span>Sign In</span>
+<span class="material-symbols-outlined text-[18px]">arrow_right_alt</span>
+</button>
+</div>
+</form>
+<!-- Footer links -->
+<div class="mt-space-lg text-center">
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                    Require assistance? <a class="text-primary hover:underline" href="#">Contact System Administrator</a>
+</p>
+</div>
+</div>
+</div>
+</body></html>

@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CorpIntel - Partner Result</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#004ac6",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed": "#dae2fd",
+                        "surface-container-high": "#e6e8ea",
+                        "on-tertiary": "#ffffff",
+                        "primary-container": "#2563eb",
+                        "on-surface": "#191c1e",
+                        "surface-container-lowest": "#ffffff",
+                        "on-surface-variant": "#434655",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d8dadc",
+                        "tertiary-fixed": "#d3e4fe",
+                        "on-tertiary-fixed-variant": "#38485d",
+                        "secondary-fixed-dim": "#bec6e0",
+                        "surface-variant": "#e0e3e5",
+                        "outline-variant": "#c3c6d7",
+                        "inverse-on-surface": "#eff1f3",
+                        "surface-container": "#eceef0",
+                        "on-secondary-fixed-variant": "#3f465c",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-error": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "outline": "#737686",
+                        "surface-tint": "#0053db",
+                        "secondary-container": "#dae2fd",
+                        "tertiary-container": "#5e6e85",
+                        "error": "#ba1a1a",
+                        "on-primary-container": "#eeefff",
+                        "inverse-surface": "#2d3133",
+                        "on-primary-fixed": "#00174b",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-tertiary-fixed": "#0b1c30",
+                        "tertiary": "#46566c",
+                        "surface": "#f7f9fb",
+                        "on-tertiary-container": "#e9f0ff",
+                        "on-secondary-fixed": "#131b2e",
+                        "primary-fixed": "#dbe1ff",
+                        "surface-bright": "#f7f9fb",
+                        "on-primary": "#ffffff",
+                        "secondary": "#565e74",
+                        "on-secondary-container": "#5c647a",
+                        "inverse-primary": "#b4c5ff",
+                        "surface-container-low": "#f2f4f6",
+                        "tertiary-fixed-dim": "#b7c8e1",
+                        "background": "#f7f9fb",
+                        "on-background": "#191c1e"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "space-md": "16px",
+                        "space-sm": "8px",
+                        "gutter": "24px",
+                        "space-xl": "48px",
+                        "container-max": "1440px",
+                        "space-lg": "24px",
+                        "unit": "8px",
+                        "space-xs": "4px",
+                        "margin-page": "40px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "mono-data": ["monospace"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "label-caps": ["11px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "700" }],
+                        "body-sm": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "body-lg": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "headline-sm": ["18px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "mono-data": ["13px", { "lineHeight": "1.5", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .ambient-shadow {
+            box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+        }
+        .glass-hint {
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background antialiased selection:bg-primary-container selection:text-on-primary-container min-h-screen flex font-body-md text-body-md">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col bg-slate-50 dark:bg-slate-950 text-blue-600 dark:text-blue-400 font-inter text-sm font-semibold tracking-wide uppercase h-screen w-64 border-r border-slate-200 dark:border-slate-800 fixed left-0 top-0 py-6 px-4 z-40 shrink-0 shadow-sm">
+<div class="mb-8 px-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center shrink-0">
+<img alt="Corporate Logo" class="w-6 h-6 object-contain filter brightness-0 invert" data-alt="A stylized geometric abstract corporate logo design, featuring intersecting dark blue lines on a solid pristine white background, representing enterprise software and data analytics. Minimalist vector style, sharp edges, professional and modern aesthetic suitable for a high-end corporate intelligence dashboard." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDOwuf4XTGmxyyKmA5owjSQCAh5WbejtlQ0MfKesJ-i7brD8euaLHi9JamXlBPngtxSJnGNWPoMIofZXd0Juplcqo-W_xaRNz9s_498n2P16lC2_zAp_B8PzN8Z3U7v75sePFtGfYXm7P07lg4idk1H3QTzF4qr8uBH-BTC5_XO_8YeqAMEgtpQAT43B2Drtp_pd_NoYmBtcliTqhzBbiezfbqxmhb8BxmubBkd0lYf9uqdMyEss4aWmz5BesKB5mM0dLEMx768I9-o"/>
+</div>
+<div>
+<h1 class="text-lg font-black text-slate-900 dark:text-white leading-tight">Intelligence Suite</h1>
+<p class="font-body-sm text-body-sm text-slate-500 normal-case font-normal mt-0.5">Enterprise Tier</p>
+</div>
+</div>
+</div>
+<ul class="flex-1 space-y-2">
+<li>
+<a class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm border-l-4 border-blue-600 rounded-r-lg group" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">search</span>
+                    Company Search
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined">query_stats</span>
+                    Market Analytics
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined">verified_user</span>
+                    Due Diligence
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+                    Portfolio
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+                    Archive
+                </a>
+</li>
+</ul>
+<div class="mt-auto space-y-4 pt-6 border-t border-slate-200 dark:border-slate-800">
+<ul class="space-y-2">
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined text-xl">help</span>
+                        Help Center
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-transform duration-200 rounded-lg group" href="#">
+<span class="material-symbols-outlined text-xl">support_agent</span>
+                        Contact Support
+                    </a>
+</li>
+</ul>
+<button class="w-full py-2.5 px-4 bg-white border border-slate-200 text-slate-900 font-semibold rounded-lg hover:bg-slate-50 transition-colors duration-200 flex items-center justify-center gap-2">
+                Upgrade Plan
+            </button>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-64 flex flex-col min-h-screen">
+<!-- TopNavBar (Mobile Only) -->
+<header class="md:hidden sticky top-0 z-50 flex items-center justify-between px-4 h-16 w-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md text-blue-600 dark:text-blue-400 font-inter antialiased text-sm font-medium border-b border-slate-200 dark:border-slate-800 shadow-sm">
+<div class="flex items-center gap-3">
+<button class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<span class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">CorpIntel</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 text-slate-600 hover:bg-slate-100 rounded-full transition-colors duration-200 hover:bg-slate-50 dark:hover:bg-slate-800">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 text-slate-600 hover:bg-slate-100 rounded-full transition-colors duration-200 hover:bg-slate-50 dark:hover:bg-slate-800">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<img alt="User profile avatar" class="w-8 h-8 rounded-full border border-slate-200 ml-2 object-cover" data-alt="A professional headshot of a business executive in a sharp suit against a neutral white background. Clean, modern, high key lighting, suitable for a high-end corporate dashboard user avatar." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBJGvnFcXtSnEPU31xSIY4EHHQUo00hftcwOumcfLsUknkd4iG2cVC5OH-Oq0NvIdLJ0FMZYkpDOovpDGmaREFJ-e9zYwckit0VoiFBFnwK4Jreb6O-zN0H8p5UAvhSYyD53MubHE1gwpN1NS8-eoz3QuIsMCoUVa19YV-7vD5-8SMFMGzhVRnA10vpbX_W7SZQZbMqzpn3AO-218eiyruSDch8F1uEMChgpv2QOHbIprCrfWEjCMdN55H5g4YYV7NjPTMHdd4tyDPE"/>
+</div>
+</header>
+<div class="flex-1 w-full max-w-[1440px] mx-auto p-4 md:p-margin-page space-y-gutter">
+<!-- Breadcrumb & Header -->
+<div class="mb-space-lg">
+<nav class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm mb-space-sm">
+<a class="hover:text-primary transition-colors" href="#">Search</a>
+<span class="material-symbols-outlined text-sm">chevron_right</span>
+<a class="hover:text-primary transition-colors" href="#">Partners</a>
+<span class="material-symbols-outlined text-sm">chevron_right</span>
+<span class="text-on-surface font-medium">Result Detail</span>
+</nav>
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div>
+<h1 class="font-display-lg text-display-lg text-on-surface">Elena Rodriguez Valdes</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant mt-2">Partner Intelligence Profile &amp; Associated Entities</p>
+</div>
+<div class="flex gap-3">
+<button class="px-4 py-2 bg-white border border-outline-variant text-on-surface font-headline-sm text-headline-sm rounded-lg hover:bg-surface-container-low transition-colors ambient-shadow flex items-center gap-2">
+<span class="material-symbols-outlined text-[20px]">download</span>
+                            Export PDF
+                        </button>
+<button class="px-4 py-2 bg-primary text-on-primary font-headline-sm text-headline-sm rounded-lg hover:bg-primary-container transition-colors ambient-shadow flex items-center gap-2">
+<span class="material-symbols-outlined text-[20px]">add_alert</span>
+                            Set Monitor
+                        </button>
+</div>
+</div>
+</div>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+<!-- Personal Info Card (Left Column) -->
+<div class="lg:col-span-4 flex flex-col gap-gutter">
+<div class="bg-surface-container-lowest rounded-xl ambient-shadow p-space-lg border border-surface-variant flex flex-col h-full relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-[80px] text-primary">person</span>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-space-md flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">badge</span>
+                            Personal Information
+                        </h2>
+<div class="space-y-space-md mt-2 flex-1">
+<div>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-1">Full Name</span>
+<span class="font-body-lg text-body-lg text-on-surface font-medium">Elena Rodriguez Valdes</span>
+</div>
+<div class="w-full h-px bg-surface-variant"></div>
+<div>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-1">Tax ID (CPF/CNPJ)</span>
+<div class="flex items-center gap-2">
+<span class="font-mono-data text-mono-data text-on-surface">***.458.291-**</span>
+<button class="text-primary hover:text-primary-container p-1 rounded"><span class="material-symbols-outlined text-[16px]">visibility</span></button>
+</div>
+</div>
+<div class="w-full h-px bg-surface-variant"></div>
+<div class="grid grid-cols-2 gap-4">
+<div>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-1">Age Group</span>
+<span class="font-body-lg text-body-lg text-on-surface">45 - 54 Years</span>
+</div>
+<div>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-1">Country</span>
+<div class="flex items-center gap-2">
+<span class="font-body-lg text-body-lg text-on-surface">Brazil</span>
+<span class="w-4 h-3 bg-surface-variant inline-block rounded-sm overflow-hidden relative" title="BR">
+<div class="absolute inset-0 bg-green-600"></div>
+<div class="absolute inset-0 m-auto w-2 h-2 bg-yellow-400 rotate-45 transform origin-center"></div>
+<div class="absolute inset-0 m-auto w-1 h-1 bg-blue-800 rounded-full"></div>
+</span>
+</div>
+</div>
+</div>
+<div class="w-full h-px bg-surface-variant"></div>
+<div>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase block mb-1">Risk Assessment</span>
+<div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-green-700 font-label-caps text-label-caps mt-1">
+<span class="w-1.5 h-1.5 rounded-full bg-green-600"></span>
+                                    LOW RISK
+                                </div>
+</div>
+</div>
+</div>
+<!-- Financial Summary Mini Card -->
+<div class="bg-surface-container-lowest rounded-xl ambient-shadow p-space-lg border border-surface-variant bg-gradient-to-br from-white to-slate-50">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-space-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">account_balance</span>
+                            Total Capital Allocation
+                        </h2>
+<div class="mt-4">
+<span class="font-display-lg text-display-lg text-on-surface tracking-tight block">R$ 14.25M</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1 mt-1">
+                                Across <strong class="text-on-surface">4</strong> active entities
+                            </span>
+</div>
+</div>
+</div>
+<!-- Linked Companies (Right Column) -->
+<div class="lg:col-span-8 flex flex-col">
+<div class="bg-surface-container-lowest rounded-xl ambient-shadow border border-surface-variant flex-1 flex flex-col overflow-hidden">
+<div class="p-space-lg border-b border-surface-variant flex items-center justify-between bg-surface-bright">
+<h2 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">corporate_fare</span>
+                                Associated Corporate Entities
+                            </h2>
+<div class="relative glass-hint rounded-lg border border-outline-variant flex items-center px-3 py-1.5">
+<span class="material-symbols-outlined text-on-surface-variant text-[18px] mr-2">filter_list</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant font-medium">Active Only</span>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low border-b border-surface-variant">
+<th class="py-3 px-space-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Company Name</th>
+<th class="py-3 px-space-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Qualification</th>
+<th class="py-3 px-space-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider text-right">Capital Share</th>
+<th class="py-3 px-space-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Timeline</th>
+<th class="py-3 px-space-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider w-10"></th>
+</tr>
+</thead>
+<tbody class="font-body-sm text-body-sm divide-y divide-surface-variant">
+<!-- Row 1: Active Focus -->
+<tr class="hover:bg-surface-container-lowest transition-colors group relative">
+<td class="py-4 px-space-md align-top">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary scale-y-0 group-hover:scale-y-100 transition-transform origin-center"></div>
+<div class="font-headline-sm text-headline-sm text-on-surface mb-1">TechLogis Solutions S.A.</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="font-mono-data text-mono-data">14.552.889/0001-23</span>
+<span class="text-slate-300">•</span>
+<span>Large Enterprise</span>
+</div>
+</td>
+<td class="py-4 px-space-md align-top">
+<div class="inline-flex items-center px-2 py-1 rounded bg-blue-50 text-primary font-medium text-xs mb-1">
+                                                Managing Partner (Sócio-Administrador)
+                                            </div>
+</td>
+<td class="py-4 px-space-md align-top text-right">
+<div class="font-mono-data text-mono-data text-on-surface font-medium block">R$ 8,500,000.00</div>
+<div class="text-on-surface-variant text-xs mt-1">45.0% Stake</div>
+</td>
+<td class="py-4 px-space-md align-top">
+<div class="flex items-center gap-1.5 text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-green-600">login</span>
+<span>12 Mar 2018</span>
+</div>
+<div class="flex items-center gap-1.5 text-on-surface-variant mt-1 opacity-50">
+<span class="material-symbols-outlined text-[16px]">logout</span>
+<span>Present</span>
+</div>
+</td>
+<td class="py-4 px-space-md align-middle text-right">
+<button class="text-primary hover:text-primary-container p-2 rounded-full hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container-lowest transition-colors group relative">
+<td class="py-4 px-space-md align-top">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary scale-y-0 group-hover:scale-y-100 transition-transform origin-center"></div>
+<div class="font-headline-sm text-headline-sm text-on-surface mb-1">AgriVentures Holdings</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="font-mono-data text-mono-data">22.104.555/0001-90</span>
+<span class="text-slate-300">•</span>
+<span>Medium Enterprise</span>
+</div>
+</td>
+<td class="py-4 px-space-md align-top">
+<div class="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-700 font-medium text-xs mb-1">
+                                                Shareholder (Sócio)
+                                            </div>
+</td>
+<td class="py-4 px-space-md align-top text-right">
+<div class="font-mono-data text-mono-data text-on-surface font-medium block">R$ 4,250,000.00</div>
+<div class="text-on-surface-variant text-xs mt-1">15.5% Stake</div>
+</td>
+<td class="py-4 px-space-md align-top">
+<div class="flex items-center gap-1.5 text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-green-600">login</span>
+<span>05 Jun 2020</span>
+</div>
+<div class="flex items-center gap-1.5 text-on-surface-variant mt-1 opacity-50">
+<span class="material-symbols-outlined text-[16px]">logout</span>
+<span>Present</span>
+</div>
+</td>
+<td class="py-4 px-space-md align-middle text-right">
+<button class="text-primary hover:text-primary-container p-2 rounded-full hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container-lowest transition-colors group relative">
+<td class="py-4 px-space-md align-top">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary scale-y-0 group-hover:scale-y-100 transition-transform origin-center"></div>
+<div class="font-headline-sm text-headline-sm text-on-surface mb-1">Valdes Consultoria Ltda</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="font-mono-data text-mono-data">08.992.111/0001-44</span>
+<span class="text-slate-300">•</span>
+<span>Micro Enterprise</span>
+</div>
+</td>
+<td class="py-4 px-space-md align-top">
+<div class="inline-flex items-center px-2 py-1 rounded bg-blue-50 text-primary font-medium text-xs mb-1">
+                                                Managing Partner
+                                            </div>
+</td>
+<td class="py-4 px-space-md align-top text-right">
+<div class="font-mono-data text-mono-data text-on-surface font-medium block">R$ 1,500,000.00</div>
+<div class="text-on-surface-variant text-xs mt-1">99.0% Stake</div>
+</td>
+<td class="py-4 px-space-md align-top">
+<div class="flex items-center gap-1.5 text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-green-600">login</span>
+<span>18 Nov 2015</span>
+</div>
+<div class="flex items-center gap-1.5 text-on-surface-variant mt-1 opacity-50">
+<span class="material-symbols-outlined text-[16px]">logout</span>
+<span>Present</span>
+</div>
+</td>
+<td class="py-4 px-space-md align-middle text-right">
+<button class="text-primary hover:text-primary-container p-2 rounded-full hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="p-space-sm border-t border-surface-variant bg-surface-bright flex justify-center">
+<button class="text-primary font-headline-sm text-headline-sm hover:underline py-2 px-4 flex items-center gap-2">
+                                View 1 Inactive Entity
+                                <span class="material-symbols-outlined text-[18px]">expand_more</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

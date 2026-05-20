@@ -88,7 +88,9 @@ class Socio(Base):
     cd_qualificacaorepresentantelegal = Column(String(2))
     cd_faixaetaria                    = Column(String(1))
     dt_ultimaatualizacao              = Column(String(7))
-    __table_args__ = (UniqueConstraint("cd_cnpjbasico", "cd_cpfcnpjsocio", "cd_qualificacaosocio"),)
+    # Índice de expressão criado em carga.py após create_all:
+    # UNIQUE(cd_cnpjbasico, COALESCE(cd_cpfcnpjsocio, nm_nomesociorazaosocial), cd_qualificacaosocio)
+    # Resolve NULL != NULL do SQL padrão para estrangeiros sem CPF/CNPJ.
 
 
 class Simples(Base):

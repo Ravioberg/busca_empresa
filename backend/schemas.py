@@ -101,16 +101,8 @@ class SocioListItem(BaseModel):
     cpf_cnpj_socio: Optional[str] = None
     identificador: Optional[str] = None
     faixa_etaria: Optional[str] = None
-    qualificacao_codigo: Optional[str] = None
-    qualificacao_descricao: Optional[str] = None
-    data_entrada: Optional[str] = None
-    is_ativo: Optional[bool] = None
-    dt_ultima: Optional[str] = None
-    cnpj_basico: str
-    cnpj_completo: Optional[str] = None
-    cnpj_completo_formatado: Optional[str] = None
-    razao_social: Optional[str] = None
-    situacao_cadastral: Optional[str] = None
+    n_ativas: int = 0
+    n_ex: int = 0
 
     model_config = {"from_attributes": True}
 

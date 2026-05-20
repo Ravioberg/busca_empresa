@@ -79,10 +79,10 @@ function SocioRow({ socio, idx, onVerSocio, mostrarHistorico }) {
               desde {socio.qualificacao_atual.data_entrada}
             </div>
           )}
-          {mostrarHistorico && !socio.ativo && socio.qualificacoes_anteriores?.[0]?.saiu_em && (
+          {!socio.ativo && socio.qualificacao_atual?.saiu_em && (
             <div className="text-xs text-on-surface-variant flex items-center gap-1 mt-0.5">
               <span className="material-symbols-outlined text-[12px] text-red-400">logout</span>
-              saiu em {socio.qualificacoes_anteriores[0].saiu_em}
+              saiu em {socio.qualificacao_atual.saiu_em}
             </div>
           )}
           {temHistorico && (
@@ -95,7 +95,7 @@ function SocioRow({ socio, idx, onVerSocio, mostrarHistorico }) {
             </button>
           )}
         </td>
-        <td className="p-space-sm pr-space-md text-right">
+        <td className="p-space-sm pr-space-md text-right whitespace-nowrap">
           <button
             onClick={() => onVerSocio && onVerSocio(socio)}
             className="text-primary hover:text-primary-container text-body-sm font-medium"
@@ -105,14 +105,27 @@ function SocioRow({ socio, idx, onVerSocio, mostrarHistorico }) {
         </td>
       </tr>
       {expandido && socio.qualificacoes_anteriores.map((q, qi) => (
-        <tr key={qi} className="bg-slate-50/50 border-b border-slate-100">
-          <td className="pl-16 py-2 text-xs text-on-surface-variant" colSpan={2}>
-            Qualificação anterior
+        <tr key={qi} className="bg-slate-50/60 border-b border-slate-100">
+          <td className="p-space-sm pl-16" colSpan={2}>
+            <span className="inline-flex items-center gap-1 text-[11px] text-on-surface-variant font-medium">
+              <span className="material-symbols-outlined text-[12px]">history</span>
+              Qualificação anterior
+            </span>
           </td>
-          <td className="py-2 text-xs text-on-surface-variant">
-            {q.descricao || "—"}
-            {q.data_entrada && <span className="ml-2">desde {q.data_entrada}</span>}
-            {q.saiu_em && <span className="ml-2 text-red-400">até {q.saiu_em}</span>}
+          <td className="p-space-sm text-on-surface-variant">
+            <div className="text-xs font-medium text-on-surface">{q.descricao || "—"}</div>
+            {q.data_entrada && (
+              <div className="text-xs text-on-surface-variant flex items-center gap-1 mt-0.5">
+                <span className="material-symbols-outlined text-[12px] text-green-600">login</span>
+                desde {q.data_entrada}
+              </div>
+            )}
+            {q.saiu_em && (
+              <div className="text-xs text-on-surface-variant flex items-center gap-1 mt-0.5">
+                <span className="material-symbols-outlined text-[12px] text-red-400">logout</span>
+                saiu em {q.saiu_em}
+              </div>
+            )}
           </td>
           <td />
         </tr>
@@ -269,7 +282,13 @@ export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio }) {
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full text-left border-collapse table-fixed">
+                    <colgroup>
+                      <col className="w-[38%]" />
+                      <col className="w-[22%]" />
+                      <col className="w-[27%]" />
+                      <col className="w-[13%]" />
+                    </colgroup>
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200">
                         <th className="text-label-caps text-tertiary p-space-sm pl-space-md">NOME</th>
@@ -305,7 +324,13 @@ export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio }) {
                 </button>
                 {exInativos && (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full text-left border-collapse table-fixed">
+                      <colgroup>
+                        <col className="w-[38%]" />
+                        <col className="w-[22%]" />
+                        <col className="w-[30%]" />
+                        <col className="w-[10%]" />
+                      </colgroup>
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="text-label-caps text-tertiary p-space-sm pl-space-md">NOME</th>

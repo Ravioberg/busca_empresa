@@ -16,20 +16,6 @@ function salvarRecentes(lista) {
   localStorage.setItem("ci_recentes_socio", JSON.stringify(lista));
 }
 
-function StatusChip({ status }) {
-  const map = {
-    Ativa: "bg-green-100 text-green-800 border-green-200",
-    Baixada: "bg-red-100 text-red-800 border-red-200",
-    Suspensa: "bg-yellow-100 text-yellow-800 border-yellow-200",
-    Inapta: "bg-red-100 text-red-800 border-red-200",
-  };
-  const cls = map[status] || "bg-slate-100 text-slate-600 border-slate-200";
-  return (
-    <span className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider border ${cls}`}>
-      {status || "—"}
-    </span>
-  );
-}
 
 export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
   const [termo, setTermo] = useState("");
@@ -43,6 +29,7 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
 
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
+  const searchIdRef = useRef(0);
 
   /* Busca ao digitar — debounce 400 ms, mínimo 3 caracteres */
   useEffect(() => {
@@ -64,6 +51,7 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
   }
 
   async function executarBusca(t) {
+    const myId = ++searchIdRef.current;
     const modo = ehCpf(t) ? "cpf" : "nome";
     setErro(null);
     setLoading(true);
@@ -72,13 +60,16 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
       const res = modo === "cpf"
         ? await buscarSocioPorCpf(t, 0, LIMIT)
         : await buscarSocioPorNome(t, 0, LIMIT);
-      if (res === null) return; // abortado
+      if (res === null || myId !== searchIdRef.current) return;
       setLista(res);
       setUltimoTermo(t);
       setPagina(0);
       addRecente(t, modo === "cpf" ? "badge" : "person_search");
-    } catch (err) { setErro(err.message); }
-    finally { setLoading(false); }
+    } catch (err) {
+      if (myId === searchIdRef.current) setErro(err.message);
+    } finally {
+      if (myId === searchIdRef.current) setLoading(false);
+    }
   }
 
   function buscar(e) {
@@ -217,26 +208,30 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
                     {(s.nome_socio || "?").charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="text-body-md text-on-surface font-semibold group-hover:text-primary transition-colors">
-                        {s.nome_socio}
-                      </span>
-                    </div>
+                    <span className="text-body-md text-on-surface font-semibold group-hover:text-primary transition-colors">
+                      {s.nome_socio}
+                    </span>
                     <div className="flex items-center gap-2 mt-0.5 text-body-sm text-on-surface-variant">
                       <span className="font-mono text-[13px]">{s.cpf_cnpj_socio}</span>
-                      {s.qualificacao_descricao && (
-                        <><span className="w-1 h-1 rounded-full bg-outline-variant" /><span>{s.qualificacao_descricao}</span></>
-                      )}
-                      {s.data_entrada && (
-                        <><span className="w-1 h-1 rounded-full bg-outline-variant" /><span>Entrada: {s.data_entrada}</span></>
-                      )}
+                      {s.identificador === "Pessoa Jurídica" || s.identificador === "Estrangeiro" ? (
+                        <><span className="w-1 h-1 rounded-full bg-outline-variant" /><span>{s.identificador}</span></>
+                      ) : s.faixa_etaria && s.faixa_etaria !== "Não informada" ? (
+                        <><span className="w-1 h-1 rounded-full bg-outline-variant" /><span>{s.faixa_etaria}</span></>
+                      ) : null}
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-body-sm text-on-surface">{s.razao_social || s.cnpj_basico}</span>
-                      {s.cnpj_completo_formatado && (
-                        <span className="font-mono text-[13px] text-outline">({s.cnpj_completo_formatado})</span>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      {s.n_ativas > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 text-[11px] font-medium">
+                          <span className="material-symbols-outlined text-[11px]">verified</span>
+                          {s.n_ativas} ativa{s.n_ativas !== 1 ? "s" : ""}
+                        </span>
                       )}
-                      {s.situacao_cadastral && <StatusChip status={s.situacao_cadastral} />}
+                      {s.n_ex > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 text-[11px] font-medium">
+                          <span className="material-symbols-outlined text-[11px]">history</span>
+                          {s.n_ex} anterior{s.n_ex !== 1 ? "es" : ""}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span className="material-symbols-outlined text-outline ml-2 shrink-0">chevron_right</span>

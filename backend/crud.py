@@ -17,7 +17,7 @@ FAIXA_ETARIA = {
     "6": "51 a 60 anos",  "7": "61 a 70 anos", "8": "71 a 80 anos",
     "9": "Mais de 80 anos",
 }
-IDENTIFICADOR_SOCIO = {"1": "Pessoa Física", "2": "Pessoa Jurídica", "3": "Estrangeiro"}
+IDENTIFICADOR_SOCIO = {"1": "Pessoa Jurídica", "2": "Pessoa Física", "3": "Estrangeiro"}
 
 # Hierarquia de qualificações de sócios (RF): menor número = maior importância.
 # Baseado na tabela oficial da Receita Federal + precedência societária brasileira.
@@ -162,6 +162,14 @@ def _agrupar_socios(socios: list, mes_atual: str) -> tuple[list, list]:
             reverse=True,
         )
         ativo = any(r.dt_ultimaatualizacao == mes_atual for r in registros_ord)
+
+        # Deduplica snapshots mensais consecutivos com a mesma qualificação.
+        # A RF republica o mesmo registro todo mês sem troca de cargo — isso não é histórico real.
+        deduped = []
+        for rec in registros_ord:
+            if not deduped or deduped[-1].cd_qualificacaosocio != rec.cd_qualificacaosocio:
+                deduped.append(rec)
+        registros_ord = deduped
         n = len(registros_ord)
 
         # Inferir data de início de cada cargo:
@@ -179,7 +187,14 @@ def _agrupar_socios(socios: list, mes_atual: str) -> tuple[list, list]:
                 # Troca de cargo dentro do mesmo ciclo mensal da RF
                 start_dates[i] = _fmt_mes(curr_ultima)
             else:
-                start_dates[i] = _next_month(prev_ultima)
+                candidate = _next_month(prev_ultima)
+                # Guard: se a data inferida for posterior ao último mês do próprio registro,
+                # "desde" ficaria depois de "saiu em" — usa o mês real da última aparição.
+                cand_ym = f"{candidate[3:7]}-{candidate[:2]}" if len(candidate) == 7 else ""
+                if cand_ym > (curr_ultima or ""):
+                    start_dates[i] = _fmt_mes(curr_ultima) if curr_ultima else None
+                else:
+                    start_dates[i] = candidate
 
         qualificacao_atual = None
         qualificacoes_anteriores = []
@@ -504,42 +519,53 @@ def _empresa_rows_to_list(rows) -> list:
 
 # ── Busca sócio ───────────────────────────────────────────────────────────────
 
-def _socio_rows_to_list(rows, mes_atual: str) -> list:
-    resultados = []
-    for r in rows:
-        cnpj_completo = cnpj_formatado = None
-        if r.cd_cnpjordem and r.cd_cnpjdv:
-            cnpj_completo, cnpj_formatado = _fmt_cnpj(r.cd_cnpjbasico, r.cd_cnpjordem, r.cd_cnpjdv)
-        dt_ultima = r.dt_ultimaatualizacao if hasattr(r, "dt_ultimaatualizacao") else None
-        resultados.append({
-            "nome_socio":              r.nm_nomesociorazaosocial,
-            "cpf_cnpj_socio":          r.cd_cpfcnpjsocio,
-            "identificador":           IDENTIFICADOR_SOCIO.get(r.cd_identificadorsocio, r.cd_identificadorsocio),
-            "faixa_etaria":            FAIXA_ETARIA.get(r.cd_faixaetaria, r.cd_faixaetaria),
-            "qualificacao_codigo":     r.cd_qualificacaosocio,
-            "qualificacao_descricao":  _cache["qualificacao"].get(r.cd_qualificacaosocio),
-            "data_entrada":            _fmt_date(r.dt_dataentradasociedade),
-            "is_ativo":                dt_ultima == mes_atual if dt_ultima else None,
-            "dt_ultima":               _fmt_mes(dt_ultima),
-            "cnpj_basico":             r.cd_cnpjbasico,
-            "cnpj_completo":           cnpj_completo,
-            "cnpj_completo_formatado": cnpj_formatado,
-            "razao_social":            r.razao_social,
-            "situacao_cadastral":      SITUACAO.get(r.cd_situacaocadastral, r.cd_situacaocadastral),
-        })
-    return resultados
+def _socio_pessoa_to_list(rows) -> list:
+    return [
+        {
+            "nome_socio":     r.nm_nomesociorazaosocial,
+            "cpf_cnpj_socio": r.cd_cpfcnpjsocio,
+            "identificador":  IDENTIFICADOR_SOCIO.get(r.cd_identificadorsocio, r.cd_identificadorsocio),
+            "faixa_etaria":   FAIXA_ETARIA.get(r.cd_faixaetaria, r.cd_faixaetaria),
+            "n_ativas":       r.n_ativas,
+            "n_ex":           r.n_ex,
+        }
+        for r in rows
+    ]
 
 
-_SOCIO_SELECT = """
-    SELECT s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio, s.cd_qualificacaosocio,
-           s.dt_dataentradasociedade, s.cd_faixaetaria, s.cd_identificadorsocio,
-           s.dt_ultimaatualizacao, s.cd_cnpjbasico,
-           e.nm_razaosocial AS razao_social,
-           est.cd_cnpjordem, est.cd_cnpjdv, est.cd_situacaocadastral
-    FROM {source}
-    LEFT JOIN empresa e ON s.cd_cnpjbasico = e.cd_cnpjbasico
+# Grupo por pessoa (nome+cpf), faixa etária do registro mais recente via ROW_NUMBER.
+# max_dt_empresa = última vez que a pessoa apareceu naquela empresa; se == mes_atual → ativa.
+# Situação da empresa também conta: Baixada (08) e Nula (01) são ex mesmo no dump atual,
+# pois a RF republica sócios dessas empresas todo mês sem que o vínculo seja real.
+_SOCIO_PESSOA_SQL = """\
+WITH filtered AS (
+    SELECT nm_nomesociorazaosocial, cd_cpfcnpjsocio, cd_faixaetaria, cd_identificadorsocio,
+           dt_ultimaatualizacao, cd_cnpjbasico
+    FROM socio WHERE {where}
+),
+ranked AS (
+    SELECT f.nm_nomesociorazaosocial, f.cd_cpfcnpjsocio, f.cd_faixaetaria, f.cd_identificadorsocio,
+           f.dt_ultimaatualizacao, f.cd_cnpjbasico,
+           est.cd_situacaocadastral,
+           MAX(f.dt_ultimaatualizacao) OVER (PARTITION BY f.nm_nomesociorazaosocial, f.cd_cpfcnpjsocio,
+                                             f.cd_cnpjbasico) AS max_dt_empresa,
+           ROW_NUMBER() OVER (PARTITION BY f.nm_nomesociorazaosocial, f.cd_cpfcnpjsocio
+                              ORDER BY f.dt_ultimaatualizacao DESC) AS rn
+    FROM filtered f
     LEFT JOIN estabelecimento est
-        ON s.cd_cnpjbasico = est.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
+        ON f.cd_cnpjbasico = est.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
+)
+SELECT nm_nomesociorazaosocial, cd_cpfcnpjsocio,
+       MAX(CASE WHEN rn = 1 THEN cd_faixaetaria END)        AS cd_faixaetaria,
+       MAX(CASE WHEN rn = 1 THEN cd_identificadorsocio END) AS cd_identificadorsocio,
+       COUNT(DISTINCT CASE WHEN max_dt_empresa =  :mes_atual
+                            AND cd_situacaocadastral NOT IN ('01','08') THEN cd_cnpjbasico END) AS n_ativas,
+       COUNT(DISTINCT CASE WHEN max_dt_empresa != :mes_atual
+                             OR cd_situacaocadastral     IN ('01','08') THEN cd_cnpjbasico END) AS n_ex
+FROM ranked
+GROUP BY nm_nomesociorazaosocial, cd_cpfcnpjsocio
+{order}
+LIMIT :limit OFFSET :skip\
 """
 
 
@@ -556,57 +582,102 @@ def busca_socio_nome(db: Session, nome: str, skip: int = 0, limit: int = 20, kno
         else:
             total = db.execute(text("""
                 SELECT COUNT(*) FROM (
-                    SELECT 1 FROM socio WHERE nm_nomesociorazaosocial ILIKE :termo LIMIT 10001
+                    SELECT DISTINCT nm_nomesociorazaosocial, cd_cpfcnpjsocio
+                    FROM socio WHERE nm_nomesociorazaosocial ILIKE :termo LIMIT 10001
                 ) t
             """), {"termo": termo}).scalar() or 0
-        sql = _SOCIO_SELECT.format(source="socio s") + """
-            WHERE s.nm_nomesociorazaosocial ILIKE :termo
-            ORDER BY
-                CASE
-                    WHEN s.nm_nomesociorazaosocial ILIKE :nome            THEN 0
-                    WHEN s.nm_nomesociorazaosocial ILIKE :nome || ' %'    THEN 1
-                    WHEN s.nm_nomesociorazaosocial ILIKE :nome || '%'     THEN 2
-                    ELSE 3
-                END,
-                s.nm_nomesociorazaosocial
-            LIMIT :limit OFFSET :skip"""
-        rows = db.execute(text(sql), {"termo": termo, "nome": nome, "limit": limit, "skip": skip}).fetchall()
+        order = """ORDER BY
+                CASE WHEN nm_nomesociorazaosocial ILIKE :nome       THEN 0
+                     WHEN nm_nomesociorazaosocial ILIKE :nome||' %' THEN 1
+                     WHEN nm_nomesociorazaosocial ILIKE :nome||'%'  THEN 2
+                     ELSE 3 END, nm_nomesociorazaosocial"""
+        rows = db.execute(text(_SOCIO_PESSOA_SQL.format(
+            where="nm_nomesociorazaosocial ILIKE :termo", order=order)),
+            {"termo": termo, "nome": nome, "mes_atual": mes_atual, "limit": limit, "skip": skip}).fetchall()
 
     elif match is not None and _fts_socio_exists(db):
         if known_total > 0:
             total = known_total
         else:
+            # Limita a 100k entradas do FTS antes de fazer o COUNT — evita scan de milhões de linhas
             total = db.execute(text("""
-                SELECT COUNT(*) FROM (
-                    SELECT 1 FROM fts_socio WHERE fts_socio MATCH :match LIMIT 10001
-                )
+                WITH fts AS (SELECT rowid_ref FROM fts_socio WHERE fts_socio MATCH :match LIMIT 100000)
+                SELECT COUNT(DISTINCT s.nm_nomesociorazaosocial || '|' || COALESCE(s.cd_cpfcnpjsocio,''))
+                FROM socio s JOIN fts ON s.id = fts.rowid_ref
             """), {"match": match}).scalar() or 0
+        # Primeira palavra >= 3 chars: usada para o prefix scan via ix_soc_nome
+        first_word = next((w for w in nome_norm.split() if len(w) >= 3), nome_norm)
         rows = db.execute(text("""
-            WITH fts AS (
-                SELECT rowid_ref, rank AS fts_rank,
+            WITH prefix AS (
+                -- Scan pelo índice ix_soc_nome: nomes que COMEÇAM com a 1ª palavra.
+                -- Garante que "RODRIGO MARCOS" aparece antes de "AGUSTINA RODRIGO".
+                SELECT s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio,
+                       s.cd_faixaetaria, s.cd_identificadorsocio,
+                       s.dt_ultimaatualizacao, s.cd_cnpjbasico,
+                       0 AS fts_rank,
                        CASE
-                           WHEN nm_nomesociorazaosocial = :nome_norm            THEN 0
-                           WHEN nm_nomesociorazaosocial LIKE :nome_norm || ' %' THEN 1
-                           WHEN nm_nomesociorazaosocial LIKE :nome_norm || '%'  THEN 2
-                           ELSE 3
+                           WHEN s.nm_nomesociorazaosocial = :nome_norm             THEN 0
+                           WHEN s.nm_nomesociorazaosocial LIKE :nome_norm || ' %'  THEN 1
+                           WHEN s.nm_nomesociorazaosocial LIKE :nome_norm || '%'   THEN 2
+                           WHEN s.nm_nomesociorazaosocial LIKE :first_word || ' %' THEN 3
+                           ELSE 4
                        END AS tier
-                FROM fts_socio
-                WHERE fts_socio MATCH :match
-                ORDER BY tier, rank
-                LIMIT :limit OFFSET :skip
+                FROM socio s
+                WHERE s.nm_nomesociorazaosocial LIKE :first_word || '%'
+                LIMIT 5000
+            ),
+            fts_raw AS (
+                -- FTS captura nomes que CONTÊM a palavra em qualquer posição
+                SELECT rowid_ref, rank AS fts_rank
+                FROM fts_socio WHERE fts_socio MATCH :match
+                LIMIT 3000
+            ),
+            fts_other AS (
+                -- Apenas nomes que NÃO começam com a 1ª palavra (ex: "AGUSTINA RODRIGO")
+                SELECT s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio,
+                       s.cd_faixaetaria, s.cd_identificadorsocio,
+                       s.dt_ultimaatualizacao, s.cd_cnpjbasico,
+                       f.fts_rank, 5 AS tier
+                FROM socio s JOIN fts_raw f ON s.id = f.rowid_ref
+                WHERE s.nm_nomesociorazaosocial NOT LIKE :first_word || '%'
+            ),
+            raw AS (
+                SELECT * FROM prefix
+                UNION ALL
+                SELECT * FROM fts_other
+            ),
+            empresa_max AS (
+                SELECT r.nm_nomesociorazaosocial, r.cd_cpfcnpjsocio, r.cd_cnpjbasico,
+                       MAX(r.dt_ultimaatualizacao)    AS max_dt,
+                       MAX(est.cd_situacaocadastral)  AS situacao
+                FROM raw r
+                LEFT JOIN estabelecimento est
+                    ON r.cd_cnpjbasico = est.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
+                GROUP BY r.nm_nomesociorazaosocial, r.cd_cpfcnpjsocio, r.cd_cnpjbasico
+            ),
+            pessoa_info AS (
+                SELECT nm_nomesociorazaosocial, cd_cpfcnpjsocio,
+                       cd_faixaetaria, cd_identificadorsocio,
+                       MIN(fts_rank) AS best_rank, MIN(tier) AS best_tier
+                FROM raw GROUP BY nm_nomesociorazaosocial, cd_cpfcnpjsocio
             )
-            SELECT s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio, s.cd_qualificacaosocio,
-                   s.dt_dataentradasociedade, s.cd_faixaetaria, s.cd_identificadorsocio,
-                   s.dt_ultimaatualizacao, s.cd_cnpjbasico,
-                   e.nm_razaosocial AS razao_social,
-                   est.cd_cnpjordem, est.cd_cnpjdv, est.cd_situacaocadastral
-            FROM socio s
-            JOIN fts ON s.id = fts.rowid_ref
-            LEFT JOIN empresa e ON s.cd_cnpjbasico = e.cd_cnpjbasico
-            LEFT JOIN estabelecimento est
-                ON s.cd_cnpjbasico = est.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
-            ORDER BY fts.tier, fts.fts_rank
-        """), {"match": match, "nome_norm": nome_norm, "limit": limit, "skip": skip}).fetchall()
+            SELECT p.nm_nomesociorazaosocial, p.cd_cpfcnpjsocio,
+                   p.cd_faixaetaria, p.cd_identificadorsocio,
+                   COUNT(DISTINCT CASE WHEN em.max_dt =  :mes_atual
+                                        AND em.situacao NOT IN ('01','08') THEN em.cd_cnpjbasico END) AS n_ativas,
+                   COUNT(DISTINCT CASE WHEN em.max_dt != :mes_atual
+                                        OR  em.situacao     IN ('01','08') THEN em.cd_cnpjbasico END) AS n_ex
+            FROM empresa_max em
+            JOIN pessoa_info p
+                ON em.nm_nomesociorazaosocial = p.nm_nomesociorazaosocial
+               AND em.cd_cpfcnpjsocio IS p.cd_cpfcnpjsocio
+            GROUP BY p.nm_nomesociorazaosocial, p.cd_cpfcnpjsocio
+            ORDER BY p.best_tier, (n_ativas = 0), p.nm_nomesociorazaosocial
+            LIMIT :limit OFFSET :skip
+        """), {
+            "match": match, "nome_norm": nome_norm, "first_word": first_word,
+            "mes_atual": mes_atual, "limit": limit, "skip": skip,
+        }).fetchall()
 
     else:
         termo = f"%{nome.lower()}%"
@@ -615,32 +686,20 @@ def busca_socio_nome(db: Session, nome: str, skip: int = 0, limit: int = 20, kno
         else:
             total = db.execute(text("""
                 SELECT COUNT(*) FROM (
-                    SELECT 1 FROM socio WHERE lower(nm_nomesociorazaosocial) LIKE :termo LIMIT 10001
+                    SELECT DISTINCT nm_nomesociorazaosocial, cd_cpfcnpjsocio
+                    FROM socio WHERE lower(nm_nomesociorazaosocial) LIKE :termo LIMIT 10001
                 )
             """), {"termo": termo}).scalar() or 0
-        rows = db.execute(text("""
-            SELECT s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio, s.cd_qualificacaosocio,
-                   s.dt_dataentradasociedade, s.cd_faixaetaria, s.cd_identificadorsocio,
-                   s.dt_ultimaatualizacao, s.cd_cnpjbasico,
-                   e.nm_razaosocial AS razao_social,
-                   est.cd_cnpjordem, est.cd_cnpjdv, est.cd_situacaocadastral
-            FROM socio s
-            LEFT JOIN empresa e ON s.cd_cnpjbasico = e.cd_cnpjbasico
-            LEFT JOIN estabelecimento est
-                ON s.cd_cnpjbasico = est.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
-            WHERE lower(s.nm_nomesociorazaosocial) LIKE :termo
-            ORDER BY
-                CASE
-                    WHEN lower(s.nm_nomesociorazaosocial) = lower(:nome)            THEN 0
-                    WHEN lower(s.nm_nomesociorazaosocial) LIKE lower(:nome) || ' %' THEN 1
-                    WHEN lower(s.nm_nomesociorazaosocial) LIKE lower(:nome) || '%'  THEN 2
-                    ELSE 3
-                END,
-                s.nm_nomesociorazaosocial
-            LIMIT :limit OFFSET :skip
-        """), {"termo": termo, "nome": nome, "limit": limit, "skip": skip}).fetchall()
+        order = """ORDER BY
+                CASE WHEN lower(nm_nomesociorazaosocial) = lower(:nome)            THEN 0
+                     WHEN lower(nm_nomesociorazaosocial) LIKE lower(:nome)||' %'   THEN 1
+                     WHEN lower(nm_nomesociorazaosocial) LIKE lower(:nome)||'%'    THEN 2
+                     ELSE 3 END, nm_nomesociorazaosocial"""
+        rows = db.execute(text(_SOCIO_PESSOA_SQL.format(
+            where="lower(nm_nomesociorazaosocial) LIKE :termo", order=order)),
+            {"termo": termo, "nome": nome, "mes_atual": mes_atual, "limit": limit, "skip": skip}).fetchall()
 
-    return {"total": total, "resultados": _socio_rows_to_list(rows, mes_atual)}
+    return {"total": total, "resultados": _socio_pessoa_to_list(rows)}
 
 
 def busca_socio_cpf(db: Session, cpf: str, skip: int = 0, limit: int = 20, known_total: int = 0) -> dict:
@@ -649,12 +708,9 @@ def busca_socio_cpf(db: Session, cpf: str, skip: int = 0, limit: int = 20, known
     cpf_clean = re.sub(r"\D", "", cpf)
     like_op = "ILIKE" if is_postgres() else "LIKE"
 
-    # Estratégia 1: dígitos digitados em qualquer posição do CPF armazenado
     termo1 = f"%{cpf_clean}%"
-    # Estratégia 2: ignora os 3 primeiros dígitos do input (RF oculta os 3 primeiros do CPF)
     cpf_sem3 = cpf_clean[3:] if len(cpf_clean) > 3 else cpf_clean
     termo2 = f"%{cpf_sem3}%"
-
     where = f"(cd_cpfcnpjsocio {like_op} :t1 OR cd_cpfcnpjsocio {like_op} :t2)"
 
     if known_total > 0:
@@ -662,16 +718,17 @@ def busca_socio_cpf(db: Session, cpf: str, skip: int = 0, limit: int = 20, known
     else:
         total = db.execute(text(f"""
             SELECT COUNT(*) FROM (
-                SELECT 1 FROM socio WHERE {where} LIMIT 10001
+                SELECT DISTINCT nm_nomesociorazaosocial, cd_cpfcnpjsocio
+                FROM socio WHERE {where} LIMIT 10001
             ) t
         """), {"t1": termo1, "t2": termo2}).scalar() or 0
 
-    sql = _SOCIO_SELECT.format(source="socio s") + \
-          f" WHERE (s.cd_cpfcnpjsocio {like_op} :t1 OR s.cd_cpfcnpjsocio {like_op} :t2)" \
-          f" ORDER BY s.nm_nomesociorazaosocial LIMIT :limit OFFSET :skip"
-    rows = db.execute(text(sql), {"t1": termo1, "t2": termo2, "limit": limit, "skip": skip}).fetchall()
+    rows = db.execute(text(_SOCIO_PESSOA_SQL.format(
+        where=f"(cd_cpfcnpjsocio {like_op} :t1 OR cd_cpfcnpjsocio {like_op} :t2)",
+        order="ORDER BY nm_nomesociorazaosocial")),
+        {"t1": termo1, "t2": termo2, "mes_atual": mes_atual, "limit": limit, "skip": skip}).fetchall()
 
-    return {"total": total, "resultados": _socio_rows_to_list(rows, mes_atual)}
+    return {"total": total, "resultados": _socio_pessoa_to_list(rows)}
 
 
 # ── Perfil completo de sócio ──────────────────────────────────────────────────
@@ -703,6 +760,7 @@ def get_perfil_socio(db: Session, cpf: str | None = None, nome: str | None = Non
                s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio,
                e.nm_razaosocial, e.vl_capitalsocial, e.cd_porteempresa,
                est.cd_cnpjordem, est.cd_cnpjdv, est.cd_situacaocadastral,
+               est.dt_datasituacaocadastral,
                est.sg_uf, est.cd_municipio, est.cd_cnaefiscalprincipal,
                est.ds_cnaefiscalsecundaria
         FROM socio s
@@ -726,7 +784,13 @@ def get_perfil_socio(db: Session, cpf: str | None = None, nome: str | None = Non
     }
 
     # ── 2. Ativas vs inativas ─────────────────────────────────────────────
-    cnpjs_ativos   = {r.cd_cnpjbasico for r in socios_raw if r.dt_ultimaatualizacao == mes_atual}
+    # A RF republica sócios de empresas encerradas todo mês, então dt_ultimaatualizacao == mes_atual
+    # não é suficiente. Baixada (08) e Nula (01) = empresa encerrada = ex-sócio.
+    # Suspensa (03) e Inapta (04) ainda existem legalmente → sócio continua ativo.
+    _ENCERRADAS = {'01', '08'}
+    cnpjs_ativos   = {r.cd_cnpjbasico for r in socios_raw
+                      if r.dt_ultimaatualizacao == mes_atual
+                      and r.cd_situacaocadastral not in _ENCERRADAS}
     cnpjs_inativos = {r.cd_cnpjbasico for r in socios_raw if r.cd_cnpjbasico not in cnpjs_ativos}
 
     # ── 3. Cards de empresa ───────────────────────────────────────────────
@@ -757,7 +821,11 @@ def get_perfil_socio(db: Session, cpf: str | None = None, nome: str | None = Non
             "ativo":                    is_ativo,
             "qualificacoes":            quals,
             "data_entrada":             _fmt_date(recs[-1].dt_dataentradasociedade),
-            "saiu_em":                  None if is_ativo else _fmt_mes(recs[0].dt_ultimaatualizacao),
+            "saiu_em":                  None if is_ativo else (
+                                            _fmt_date(latest.dt_datasituacaocadastral)
+                                            if latest.cd_situacaocadastral in ('01', '08')
+                                            else _fmt_mes(recs[0].dt_ultimaatualizacao)
+                                        ),
             "capital_social":           capital,
             "porte":                    PORTE.get(latest.cd_porteempresa, "Não informado"),
             "uf":                       latest.sg_uf,

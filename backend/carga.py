@@ -107,6 +107,10 @@ PADROES_ZIP = {
 
 CSV_PARAMS = dict(sep=";", encoding="latin-1", header=None, dtype=str, engine="python", quoting=1)
 
+
+def _is_postgres() -> bool:
+    return DATABASE_URL.startswith("postgresql")
+
 # ---------------------------------------------------------------------------
 # SQL — tabelas temporárias (por ZIP, criadas e descartadas individualmente)
 # ---------------------------------------------------------------------------
@@ -220,7 +224,10 @@ SQL_UPSERT = {
             dt_datasituacaoespecial      = excluded.dt_datasituacaoespecial,
             dt_ultimaatualizacao         = excluded.dt_ultimaatualizacao
     """,
-    "socios": """
+    # SQLite: ON CONFLICT sem target — funciona com índice de expressão (COALESCE).
+    # PostgreSQL: target explícito com a mesma expressão do índice.
+    # Chave lógica: (cd_cnpjbasico, COALESCE(cd_cpfcnpjsocio, nm_nomesociorazaosocial), cd_qualificacaosocio)
+    "socios_sqlite": """
         INSERT INTO socio (
             cd_cnpjbasico, cd_identificadorsocio, nm_nomesociorazaosocial, cd_cpfcnpjsocio,
             cd_qualificacaosocio, dt_dataentradasociedade, cd_pais, cd_cpfrepresentantelegal,
@@ -233,7 +240,32 @@ SQL_UPSERT = {
             nm_nomerepresentante, cd_qualificacaorepresentantelegal, cd_faixaetaria,
             :mes
         FROM tmp_socios WHERE 1=1 ORDER BY cd_cnpjbasico, cd_cpfcnpjsocio, cd_qualificacaosocio
-        ON CONFLICT(cd_cnpjbasico, cd_cpfcnpjsocio, cd_qualificacaosocio) DO UPDATE SET
+        ON CONFLICT DO UPDATE SET
+            cd_identificadorsocio             = excluded.cd_identificadorsocio,
+            nm_nomesociorazaosocial           = excluded.nm_nomesociorazaosocial,
+            dt_dataentradasociedade           = excluded.dt_dataentradasociedade,
+            cd_pais                           = excluded.cd_pais,
+            cd_cpfrepresentantelegal          = excluded.cd_cpfrepresentantelegal,
+            nm_nomerepresentante              = excluded.nm_nomerepresentante,
+            cd_qualificacaorepresentantelegal = excluded.cd_qualificacaorepresentantelegal,
+            cd_faixaetaria                    = excluded.cd_faixaetaria,
+            dt_ultimaatualizacao              = excluded.dt_ultimaatualizacao
+    """,
+    "socios_postgres": """
+        INSERT INTO socio (
+            cd_cnpjbasico, cd_identificadorsocio, nm_nomesociorazaosocial, cd_cpfcnpjsocio,
+            cd_qualificacaosocio, dt_dataentradasociedade, cd_pais, cd_cpfrepresentantelegal,
+            nm_nomerepresentante, cd_qualificacaorepresentantelegal, cd_faixaetaria,
+            dt_ultimaatualizacao
+        )
+        SELECT
+            cd_cnpjbasico, cd_identificadorsocio, nm_nomesociorazaosocial, cd_cpfcnpjsocio,
+            cd_qualificacaosocio, dt_dataentradasociedade, cd_pais, cd_cpfrepresentantelegal,
+            nm_nomerepresentante, cd_qualificacaorepresentantelegal, cd_faixaetaria,
+            :mes
+        FROM tmp_socios WHERE 1=1 ORDER BY cd_cnpjbasico, cd_cpfcnpjsocio, cd_qualificacaosocio
+        ON CONFLICT (cd_cnpjbasico, COALESCE(cd_cpfcnpjsocio, nm_nomesociorazaosocial), cd_qualificacaosocio)
+        DO UPDATE SET
             cd_identificadorsocio             = excluded.cd_identificadorsocio,
             nm_nomesociorazaosocial           = excluded.nm_nomesociorazaosocial,
             dt_dataentradasociedade           = excluded.dt_dataentradasociedade,
@@ -566,10 +598,13 @@ def _processar_zip(engine, mes: str, tabela: str, zp: Path) -> int:
 
     t_upsert = time.time()
     print(f"\n  {zp.name}: {zip_total:,} linhas lidas ({t_upsert - t_leitura:.1f}s) → upsert...")
+    upsert_key = tabela
+    if tabela == "socios":
+        upsert_key = "socios_postgres" if _is_postgres() else "socios_sqlite"
     with engine.connect() as conn:
         conn.execute(text("PRAGMA cache_size = -2097152"))  # 2 GB durante UPSERT
         conn.execute(text(SQL_INDEX_TMP[tabela]))
-        conn.execute(text(SQL_UPSERT[tabela]), {"mes": mes})
+        conn.execute(text(SQL_UPSERT[upsert_key]), {"mes": mes})
         conn.execute(text(f"DROP TABLE IF EXISTS {tmp_nome}"))
         conn.commit()
         conn.execute(text("PRAGMA cache_size = -1048576"))  # restaura 1 GB
@@ -593,15 +628,21 @@ def _ha_mes_concluido(engine) -> bool:
     return (count or 0) > 0
 
 
-def _processar_tabelas(engine, mes: str, deferred_indexes: bool = False) -> dict:
+def _processar_tabelas(engine, mes: str, deferred_indexes: bool = False,
+                       tabelas: list | None = None) -> dict:
     """
     Processa empresa, estabelecimento e socios via UPSERT por ZIP com checkpoints.
     Mesma lógica para primeira carga e incrementais — o UPSERT é idempotente nos dois casos.
     deferred_indexes=True: modo batch — sem drop/recreate por tabela; main() recria tudo no final.
+    tabelas: subconjunto a processar neste mês; None = todas as três.
     """
+    if tabelas is None:
+        tabelas = ["empresa", "estabelecimento", "socios"]
     stats = {}
 
     for tabela in ["empresa", "estabelecimento", "socios"]:
+        if tabela not in tabelas:
+            continue
         tabela_db = TABELA_DB[tabela]
         zips = _listar_zips(mes, tabela)
         if not zips:
@@ -700,7 +741,8 @@ def _processar_tabelas(engine, mes: str, deferred_indexes: bool = False) -> dict
     return stats
 
 
-def processar_mes(engine, mes: str, forcar: bool = False, deferred_indexes: bool = False):
+def processar_mes(engine, mes: str, forcar: bool = False, deferred_indexes: bool = False,
+                  tabelas: list | None = None):
     status = _mes_status(engine, mes)
 
     if status == "CONCLUIDO" and not forcar:
@@ -710,8 +752,9 @@ def processar_mes(engine, mes: str, forcar: bool = False, deferred_indexes: bool
     if status == "ERRO":
         print(f"[{mes}] run anterior com ERRO — retomando do ultimo ZIP concluido...")
 
+    tabelas_label = ", ".join(tabelas) if tabelas else "empresa, estabelecimento, socios"
     print(f"\n{'='*60}")
-    print(f"  Processando: {mes}")
+    print(f"  Processando: {mes}  [{tabelas_label}]")
     print(f"{'='*60}")
     t0 = time.time()
 
@@ -720,7 +763,7 @@ def processar_mes(engine, mes: str, forcar: bool = False, deferred_indexes: bool
         print(f"  Modo: {'PRIMEIRA CARGA' if eh_primeiro else 'INCREMENTAL'}")
 
     try:
-        stats = _processar_tabelas(engine, mes, deferred_indexes=deferred_indexes)
+        stats = _processar_tabelas(engine, mes, deferred_indexes=deferred_indexes, tabelas=tabelas)
 
         if eh_primeiro and not deferred_indexes:
             _criar_indexes_principais(engine)
@@ -733,9 +776,12 @@ def processar_mes(engine, mes: str, forcar: bool = False, deferred_indexes: bool
         elapsed = time.time() - t0
         m, s = divmod(int(elapsed), 60)
         print(f"  Concluido em {m}m {s}s")
-        print(f"  Empresa:        +{stats.get('inseridos_empresa', 0):>10,}  ~{stats.get('atualizados_empresa', 0):>10,}")
-        print(f"  Estabelecimento:+{stats.get('inseridos_estabelecimento', 0):>10,}  ~{stats.get('atualizados_estabelecimento', 0):>10,}")
-        print(f"  Socios:         +{stats.get('inseridos_socios', 0):>10,}  ~{stats.get('atualizados_socios', 0):>10,}")
+        if not tabelas or "empresa" in tabelas:
+            print(f"  Empresa:        +{stats.get('inseridos_empresa', 0):>10,}  ~{stats.get('atualizados_empresa', 0):>10,}")
+        if not tabelas or "estabelecimento" in tabelas:
+            print(f"  Estabelecimento:+{stats.get('inseridos_estabelecimento', 0):>10,}  ~{stats.get('atualizados_estabelecimento', 0):>10,}")
+        if not tabelas or "socios" in tabelas:
+            print(f"  Socios:         +{stats.get('inseridos_socios', 0):>10,}  ~{stats.get('atualizados_socios', 0):>10,}")
 
     except Exception as e:
         _registrar(engine, mes, {}, "ERRO")
@@ -837,6 +883,19 @@ def _main():
     print("Criando tabelas (se nao existirem)...")
     Base.metadata.create_all(bind=engine)
 
+    # Índice de expressão que resolve NULL != NULL para estrangeiros sem CPF/CNPJ.
+    # COALESCE(cd_cpfcnpjsocio, nm_nomesociorazaosocial) — se não tem CPF, usa o nome como chave.
+    # Mesmo SQL funciona em SQLite e PostgreSQL.
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ix_socio_chave_natural
+            ON socio(cd_cnpjbasico,
+                     COALESCE(cd_cpfcnpjsocio, nm_nomesociorazaosocial),
+                     cd_qualificacaosocio)
+        """))
+        conn.commit()
+    print("Indice ix_socio_chave_natural: OK")
+
     if args.status:
         _show_status(engine)
         return
@@ -856,9 +915,20 @@ def _main():
     # e cria todos os índices UMA VEZ ao final — economiza N×(drop+create) por tabela.
     deferred = not _todos_indexes_existem(engine) or len(pendentes) > 1
 
+    # Modo otimizado para carga com múltiplos meses (carga inicial ou releitura):
+    # - empresa + estabelecimento: apenas do mês mais recente (último snapshot contém tudo)
+    # - socios: todos os meses (histórico de saída só existe nos snapshots anteriores)
+    # Carga incremental (1 mês) processa sempre as três tabelas normalmente.
+    otimizado = len(pendentes) > 1 and not args.mes
+
     if pendentes:
         if deferred:
-            print(f"\n{len(pendentes)} mes(es) a processar — modo batch (indices criados ao final).")
+            if otimizado:
+                print(f"\n{len(pendentes)} mes(es) pendentes — modo batch otimizado.")
+                print(f"  empresa + estabelecimento: apenas {pendentes[-1]} (ultimo snapshot)")
+                print(f"  socios: todos os {len(pendentes)} meses (historico completo)")
+            else:
+                print(f"\n{len(pendentes)} mes(es) a processar — modo batch (indices criados ao final).")
             _dropar_todos_indexes(engine)
         else:
             print(f"\n{len(pendentes)} mes(es) a processar.")
@@ -866,7 +936,11 @@ def _main():
 
         inicio_total = time.time()
         for mes in pendentes:
-            processar_mes(engine, mes, deferred_indexes=deferred)
+            if otimizado:
+                tabelas = ["empresa", "estabelecimento", "socios"] if mes == pendentes[-1] else ["socios"]
+            else:
+                tabelas = None  # todas as tabelas
+            processar_mes(engine, mes, deferred_indexes=deferred, tabelas=tabelas)
 
         elapsed = time.time() - inicio_total
         h, rem = divmod(int(elapsed), 3600)

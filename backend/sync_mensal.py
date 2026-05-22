@@ -22,7 +22,9 @@ import logging
 import zipfile
 import argparse
 import subprocess
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, date
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import requests
@@ -68,7 +70,8 @@ def _setup_logging() -> logging.Logger:
     logger  = logging.getLogger("sync_mensal")
     logger.setLevel(logging.DEBUG)
 
-    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    fh = RotatingFileHandler(LOG_FILE, encoding="utf-8",
+                             maxBytes=5_242_880, backupCount=3)  # 5 MB × 3 arquivos
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter(fmt, datefmt))
 
@@ -149,30 +152,46 @@ def _arquivo_ok(path: Path) -> bool:
 def _preflight(session: requests.Session, pasta_url: str,
                zips: list[str], dest_dir: Path) -> list[str]:
     """
-    HEAD em cada arquivo que ainda não existe localmente.
-    Retorna lista dos que retornaram 404 (precisam ser baixados mas não estão disponíveis).
-    Loga o resultado de cada verificação.
+    HEAD paralelo em cada arquivo que ainda não existe localmente.
+    Retorna lista dos que não estão disponíveis (404 ou erro).
     """
-    faltando = []
-    for nome in zips:
-        dest = dest_dir / nome
-        if _arquivo_ok(dest):
-            continue   # já baixado — não precisa checar
-        url = pasta_url + nome
+    pendentes = [(nome, pasta_url + nome)
+                 for nome in zips if not _arquivo_ok(dest_dir / nome)]
+
+    if not pendentes:
+        return []
+
+    faltando: list[str] = []
+
+    def _checar(nome: str, url: str) -> tuple[str, bool, str]:
         try:
             r = session.head(url, timeout=15, allow_redirects=True)
-            if r.status_code == 404:
-                log.warning(f"  INDISPONIVEL  {nome}  (404 no servidor)")
-                faltando.append(nome)
-            elif r.status_code != 200:
-                log.warning(f"  STATUS {r.status_code}  {nome}")
-                faltando.append(nome)
-            else:
+            if r.status_code == 200:
                 size = int(r.headers.get("Content-Length", 0))
-                log.debug(f"  disponivel  {nome}  ({size/1e6:.0f} MB)")
+                return nome, True, f"{size/1e6:.0f} MB"
+            return nome, False, f"HTTP {r.status_code}"
         except Exception as exc:
-            log.warning(f"  ERRO ao verificar {nome}: {exc}")
+            return nome, False, str(exc)
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futuros = {pool.submit(_checar, nome, url): nome
+                   for nome, url in pendentes}
+        resultados = {}
+        for fut in as_completed(futuros):
+            nome, ok, detalhe = fut.result()
+            resultados[nome] = (ok, detalhe)
+
+    # Exibe em ordem original do site
+    for nome in zips:
+        if nome not in resultados:
+            continue   # já existia localmente
+        ok, detalhe = resultados[nome]
+        if ok:
+            log.debug(f"  ok  {nome}  ({detalhe})")
+        else:
+            log.warning(f"  INDISPONIVEL  {nome}  ({detalhe})")
             faltando.append(nome)
+
     return faltando
 
 
@@ -191,7 +210,7 @@ def _download_zip(session: requests.Session, url: str, dest: Path) -> None:
         tmp.unlink(missing_ok=True)
         try:
             log.info(f"  [{tentativa}/{MAX_TENTATIVAS}] Baixando {dest.name}...")
-            with session.get(url, stream=True, timeout=120) as r:
+            with session.get(url, stream=True, timeout=(30, None)) as r:
                 r.raise_for_status()
                 total   = int(r.headers.get("Content-Length", 0))
                 baixado = 0
@@ -289,11 +308,41 @@ def _meses_locais() -> list[str]:
 # ---------------------------------------------------------------------------
 # Lógica principal
 # ---------------------------------------------------------------------------
+def _agendar() -> None:
+    """Cria tarefa diária no Windows Task Scheduler (07:00, usuário atual)."""
+    script = Path(__file__).resolve()
+    exe    = sys.executable
+    cmd    = f'"{exe}" "{script}"'
+    result = subprocess.run([
+        "schtasks", "/create",
+        "/tn", "CorpIntel-SyncMensal",
+        "/tr", cmd,
+        "/sc", "daily",
+        "/st", "07:00",
+        "/f",   # sobrescreve se já existir
+    ], capture_output=True, text=True)
+    if result.returncode == 0:
+        print("Tarefa criada: CorpIntel-SyncMensal — diario as 07:00")
+        print(f"  Script : {script}")
+        print(f"  Python : {exe}")
+        print("Para remover: schtasks /delete /tn CorpIntel-SyncMensal /f")
+    else:
+        print(f"Erro ao criar tarefa: {result.stderr.strip()}")
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sync mensal CNPJ — CorpIntel")
     parser.add_argument("--dry-run", action="store_true",
                         help="Lista o que faria sem baixar nem processar nada")
+    parser.add_argument("--agendar", action="store_true",
+                        help="Cria tarefa diaria no Windows Task Scheduler e sai")
     args    = parser.parse_args()
+
+    if args.agendar:
+        _agendar()
+        return
+
     dry_run = args.dry_run
 
     if not dry_run:
@@ -319,6 +368,16 @@ def _executar(dry_run: bool) -> None:
     if not DADOS_BRUTOS.exists():
         log.error(f"DADOS_BRUTOS não encontrado: {DADOS_BRUTOS}")
         sys.exit(1)
+
+    # ── 0. Janela de publicação ───────────────────────────────────────────────
+    # A RF nunca publica antes do dia 8 (histórico: dia 8–30). Nos primeiros 7
+    # dias do mês não há nada a fazer — evita consulta desnecessária ao site.
+    hoje = date.today()
+    if not dry_run and hoje.day < 8:
+        log.info(f"Dia {hoje.day} — antes da janela de publicação da RF (dia 8+). "
+                 f"Nada a fazer.")
+        log.info("=" * 60)
+        return
 
     # ── 1. Pastas disponíveis no site ────────────────────────────────────────
     session = _nova_sessao()
@@ -360,7 +419,6 @@ def _executar(dry_run: bool) -> None:
                 log.warning(f"  [{mes}] Erro ao listar arquivos: {exc}")
                 continue
             dest_dir = DADOS_BRUTOS / mes
-            dest_dir.mkdir(parents=True, exist_ok=True)
             log.info(f"  [{mes}]  pasta={mapa_mes[mes]}  {len(zips)} ZIP(s):")
             indisponiveis = _preflight(session, pasta_url, zips, dest_dir)
             for z in zips:

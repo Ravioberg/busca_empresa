@@ -7,6 +7,24 @@ function ehCnpj(v) {
   return v.replace(/\D/g, "").length === 14;
 }
 
+function validCNPJ(v) {
+  const d = (v || "").replace(/\D/g, "");
+  if (d.length !== 14) return false;
+  if (/^(\d)\1+$/.test(d)) return false;
+  const calc = (base) => {
+    let sum = 0;
+    const w = base.length === 12
+      ? [5,4,3,2,9,8,7,6,5,4,3,2]
+      : [6,5,4,3,2,9,8,7,6,5,4,3,2];
+    for (let i = 0; i < base.length; i++) sum += parseInt(base[i], 10) * w[i];
+    const r = sum % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  const d1 = calc(d.slice(0, 12));
+  const d2 = calc(d.slice(0, 13));
+  return d1 === parseInt(d[12], 10) && d2 === parseInt(d[13], 10);
+}
+
 function StatusChip({ status }) {
   const map = {
     Ativa: "bg-green-100 text-green-800 border-green-200",
@@ -106,26 +124,39 @@ export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
   const total = lista?.total || 0;
   const totalPags = Math.ceil(total / LIMIT);
 
+  const raw = termo.replace(/\D/g, "");
+  const looksLikeCnpj = raw.length > 0 && /^[\d.\-/]+$/.test(termo.trim());
+  const cnpjValidity = looksLikeCnpj
+    ? (raw.length === 14 ? (validCNPJ(raw) ? "ok" : "bad") : "typing")
+    : null;
+
   return (
-    <main className="flex-1 md:ml-64 overflow-y-auto bg-surface min-h-screen">
+    <main className="flex-1 md:ml-52 overflow-y-auto bg-[#f7f9fc] min-h-screen">
       {/* Header fixo */}
-      <header className="sticky top-0 z-50 flex items-center justify-between px-8 h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm">
+      <header className="sticky top-0 z-50 flex items-center justify-between px-8 h-14 bg-white/90 backdrop-blur-md border-b border-[#e2e8f0]">
         <button
           onClick={onVoltar}
-          className="flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors text-body-sm font-medium"
+          className="flex items-center gap-2 text-[13px] font-medium transition-colors"
+          style={{ color: "#64748b" }}
+          onMouseEnter={e => e.currentTarget.style.color = "#0085ca"}
+          onMouseLeave={e => e.currentTarget.style.color = "#64748b"}
         >
-          <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+          <span className="material-symbols-outlined text-[17px]">arrow_back</span>
           Seleção de Pesquisa
         </button>
-        <span className="text-xl font-black text-slate-900 hidden md:block">CorpIntel</span>
-        <div className="w-40" />
+        <div className="w-32" />
       </header>
 
       <div className="max-w-[1000px] mx-auto w-full px-4 md:px-8 py-10">
         {/* Título */}
         <div className="flex flex-col items-center text-center mb-12 mt-8">
-          <h1 className="text-display-lg text-on-surface mb-4 tracking-tight">Pesquisa por Empresa</h1>
-          <p className="text-body-lg text-on-surface-variant max-w-2xl">
+          <h1
+            className="text-[38px] font-semibold leading-tight tracking-tight mb-3"
+            style={{ fontFamily: "'Inter Tight', Inter, sans-serif", color: "#0f172a" }}
+          >
+            Pesquisa por Empresa
+          </h1>
+          <p className="text-[15px] leading-relaxed max-w-2xl" style={{ color: "#64748b" }}>
             Acesse dados corporativos instantaneamente. Busque por Razão Social, Nome Fantasia ou CNPJ para iniciar
             sua análise.
           </p>
@@ -134,57 +165,87 @@ export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
         {/* Barra de busca */}
         <div className="relative w-full max-w-3xl mx-auto z-20">
           <form onSubmit={buscar}>
-            <div className="relative flex items-center w-full h-[72px] rounded-xl bg-surface-container-lowest border border-outline-variant shadow-search focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+            <div
+              className="relative flex items-center w-full h-[68px] rounded-xl bg-white transition-all"
+              style={{ border: "1.5px solid #e2e8f0", boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}
+              onFocus={() => {}}
+            >
               <span
-                className={`material-symbols-outlined absolute left-6 text-[28px] transition-colors ${loading ? "text-outline animate-spin" : "text-primary"}`}
-                style={{ fontVariationSettings: "'FILL' 1" }}
+                className={`material-symbols-outlined absolute left-5 text-[26px] transition-colors ${loading ? "animate-spin" : ""}`}
+                style={{ color: loading ? "#94a3b8" : "#0085ca", fontVariationSettings: "'FILL' 1" }}
               >
                 {loading ? "progress_activity" : "search"}
               </span>
               <input
                 ref={inputRef}
-                className="w-full h-full pl-[72px] pr-16 bg-transparent border-none outline-none text-body-lg text-on-surface placeholder:text-outline-variant"
+                className="w-full h-full pl-[62px] pr-36 bg-transparent border-none outline-none text-[16px] text-[#0f172a] placeholder:text-[#94a3b8]"
                 placeholder="Digite o CNPJ ou Nome da Empresa..."
                 value={termo}
                 onChange={(e) => setTermo(e.target.value)}
+                onFocus={e => e.currentTarget.closest("div").style.borderColor = "#0085ca"}
+                onBlur={e => e.currentTarget.closest("div").style.borderColor = "#e2e8f0"}
                 autoFocus
               />
-              {termo && (
-                <button
-                  type="button"
-                  onClick={() => { setTermo(""); setLista(null); setErro(null); }}
-                  className="absolute right-4 text-outline hover:text-on-surface p-1 rounded-full hover:bg-surface-container transition-colors"
-                >
-                  <span className="material-symbols-outlined text-[20px]">close</span>
-                </button>
-              )}
+              <div className="absolute right-4 flex items-center gap-2">
+                {/* Badge de validade CNPJ */}
+                {cnpjValidity === "ok" && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">
+                    Válido
+                  </span>
+                )}
+                {cnpjValidity === "bad" && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200">
+                    Inválido
+                  </span>
+                )}
+                {cnpjValidity === "typing" && (
+                  <span className="text-[11px] font-medium" style={{ color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>
+                    {raw.length}/14
+                  </span>
+                )}
+                {termo && (
+                  <button
+                    type="button"
+                    onClick={() => { setTermo(""); setLista(null); setErro(null); }}
+                    className="p-1 rounded-full transition-colors"
+                    style={{ color: "#94a3b8" }}
+                    onMouseEnter={e => e.currentTarget.style.color = "#0f172a"}
+                    onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">close</span>
+                  </button>
+                )}
+              </div>
             </div>
           </form>
         </div>
 
         {/* Erro */}
         {erro && (
-          <p className="text-center text-error mt-10 text-body-md">{erro}</p>
+          <p className="text-center mt-10 text-[14px]" style={{ color: "#b91c1c" }}>{erro}</p>
         )}
 
         {/* Pesquisas recentes — só quando campo vazio */}
         {!lista && !loading && termo.trim().length < 3 && (
-          <div className="mt-16 max-w-3xl mx-auto">
-            <h3 className="text-headline-sm text-on-surface mb-6 flex items-center">
-              <span className="material-symbols-outlined mr-2 text-outline">history</span>
+          <div className="mt-14 max-w-3xl mx-auto">
+            <h3 className="text-[13px] font-semibold mb-4 flex items-center gap-2" style={{ color: "#64748b" }}>
+              <span className="material-symbols-outlined text-[16px]">history</span>
               Pesquisas Recentes
             </h3>
             {recentes.length === 0 ? (
-              <p className="text-body-sm text-on-surface-variant">Nenhuma pesquisa recente.</p>
+              <p className="text-[13px]" style={{ color: "#94a3b8" }}>Nenhuma pesquisa recente.</p>
             ) : (
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2">
                 {recentes.map((r, i) => (
                   <button
                     key={i}
                     onClick={() => setTermo(r.termo)}
-                    className="flex items-center px-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-full text-body-sm text-on-surface-variant hover:border-primary hover:text-primary transition-colors shadow-ambient"
+                    className="flex items-center px-3.5 py-1.5 bg-white rounded-full text-[13px] transition-colors"
+                    style={{ border: "1px solid #e2e8f0", color: "#64748b" }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = "#0085ca"; e.currentTarget.style.color = "#0085ca"; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}
                   >
-                    <span className="material-symbols-outlined text-[16px] mr-2">{r.icone}</span>
+                    <span className="material-symbols-outlined text-[14px] mr-1.5">{r.icone}</span>
                     {r.termo}
                   </button>
                 ))}
@@ -193,33 +254,36 @@ export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
           </div>
         )}
 
-        {/* Lista de resultados — permanece visível enquanto novo resultado carrega */}
+        {/* Lista de resultados */}
         {lista && (
           <div className={`mt-8 max-w-3xl mx-auto transition-opacity duration-150 ${loading ? "opacity-50" : "opacity-100"}`}>
-            <p className="text-body-sm text-on-surface-variant mb-4">
+            <p className="text-[13px] mb-4" style={{ color: "#94a3b8" }}>
               {total.toLocaleString("pt-BR")} resultado{total !== 1 ? "s" : ""} para &ldquo;{ultimoTermo}&rdquo;
             </p>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2.5">
               {lista.resultados.map((e) => (
                 <button
                   key={e.cnpj_basico}
                   onClick={() => executarBusca(e.cnpj_completo || e.cnpj_basico + "00000001")}
-                  className="w-full flex items-center justify-between px-6 py-4 bg-surface-container-lowest rounded-xl border border-outline-variant/30 hover:border-primary/40 hover:bg-primary/5 cursor-pointer transition-all ambient-shadow text-left group"
+                  className="w-full flex items-center justify-between px-5 py-4 bg-white rounded-xl cursor-pointer transition-all text-left group"
+                  style={{ border: "1.5px solid #e2e8f0", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#0085ca"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,133,202,0.1)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "0 1px 4px rgba(15,23,42,0.04)"; }}
                 >
                   <div className="flex flex-col min-w-0">
                     <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="text-body-md text-on-surface font-semibold group-hover:text-primary transition-colors">
+                      <span className="text-[14px] font-semibold" style={{ color: "#0f172a" }}>
                         {e.razao_social}
                       </span>
                       <StatusChip status={e.situacao_cadastral} />
                     </div>
-                    <span className="text-body-sm text-on-surface-variant mt-0.5">
+                    <span className="text-[13px] mt-0.5" style={{ color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>
                       {e.cnpj_completo_formatado || e.cnpj_basico}
-                      {e.nome_fantasia ? ` · ${e.nome_fantasia}` : ""}
+                      {e.nome_fantasia ? <span style={{ fontFamily: "inherit" }}> · {e.nome_fantasia}</span> : ""}
                       {e.municipio_descricao && e.uf ? ` · ${e.municipio_descricao}, ${e.uf}` : ""}
                     </span>
                   </div>
-                  <span className="material-symbols-outlined text-outline ml-4 shrink-0">chevron_right</span>
+                  <span className="material-symbols-outlined ml-4 shrink-0" style={{ color: "#cbd5e1" }}>chevron_right</span>
                 </button>
               ))}
             </div>
@@ -229,17 +293,19 @@ export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
                 <button
                   onClick={() => mudarPagina(pagina - LIMIT)}
                   disabled={pagina === 0 || loading}
-                  className="px-4 py-2 bg-white border border-outline-variant rounded text-on-surface text-body-sm font-medium hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-4 py-2 bg-white rounded text-[13px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ border: "1px solid #e2e8f0", color: "#334155" }}
                 >
                   ← Anterior
                 </button>
-                <span className="text-body-sm text-on-surface-variant">
+                <span className="text-[13px]" style={{ color: "#94a3b8" }}>
                   Página {Math.floor(pagina / LIMIT) + 1} de {totalPags}
                 </span>
                 <button
                   onClick={() => mudarPagina(pagina + LIMIT)}
                   disabled={pagina + LIMIT >= total || loading}
-                  className="px-4 py-2 bg-white border border-outline-variant rounded text-on-surface text-body-sm font-medium hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-4 py-2 bg-white rounded text-[13px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ border: "1px solid #e2e8f0", color: "#334155" }}
                 >
                   Próxima →
                 </button>
@@ -248,9 +314,8 @@ export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
           </div>
         )}
 
-        {/* Placeholder "Consultando" apenas na primeira busca (sem lista ainda) */}
         {loading && !lista && (
-          <p className="text-center text-on-surface-variant mt-10 text-body-md">Consultando...</p>
+          <p className="text-center mt-10 text-[14px]" style={{ color: "#94a3b8" }}>Consultando...</p>
         )}
       </div>
     </main>

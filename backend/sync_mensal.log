@@ -1725,3 +1725,80 @@
 2026-05-20 17:54:29  WARNING    [2026-05] Mes bloqueado: 1 arquivo(s) indisponivel(is).
 2026-05-20 17:54:29  INFO     [dry-run] Nenhuma alteracao realizada.
 2026-05-20 17:54:29  INFO     ============================================================
+2026-05-21 21:49:17  INFO     ============================================================
+2026-05-21 21:49:17  INFO     sync_mensal [DRY-RUN] início: 2026-05-21 21:49:17
+2026-05-21 21:49:17  INFO     dados-brutos : C:\Users\roberg\Documents\DA\Pythagoras\busca_empresa\dados-brutos
+2026-05-21 21:49:17  INFO     banco        : sqlite:///C:\Users\roberg\Documents\DA\Pythagoras\busca_empresa\backend\cnpj.db
+2026-05-21 21:49:17  INFO     ============================================================
+2026-05-21 21:49:17  INFO     Consultando casadosdados...
+2026-05-21 21:49:18  INFO       Site: 39 meses disponíveis — mais recente: 2026-05
+2026-05-21 21:49:18  INFO       Banco: 38 mês(es) CONCLUIDO(s).
+2026-05-21 21:49:18  INFO       Novo(s) a processar: 2026-05
+2026-05-21 21:49:18  INFO       [2026-05]  pasta=2026-05-10  37 ZIP(s):
+2026-05-21 21:49:20  WARNING    INDISPONIVEL  Empresas0.zip  (HTTP 404)
+2026-05-21 21:49:20  DEBUG      ok  Estabelecimentos0.zip  (2086 MB)
+2026-05-21 21:49:20  DEBUG      ok  Estabelecimentos1.zip  (341 MB)
+2026-05-21 21:49:20  DEBUG      ok  Estabelecimentos2.zip  (334 MB)
+2026-05-21 21:49:20  DEBUG      ok  Estabelecimentos3.zip  (367 MB)
+2026-05-21 21:49:20  DEBUG      ok  Estabelecimentos4.zip  (341 MB)
+2026-05-21 21:49:20  DEBUG      ok  Estabelecimentos5.zip  (335 MB)
+2026-05-21 21:49:20  DEBUG      ok  Estabelecimentos6.zip  (367 MB)
+2026-05-21 21:49:20  DEBUG      ok  Estabelecimentos7.zip  (341 MB)
+2026-05-21 21:49:20  DEBUG      ok  Estabelecimentos8.zip  (334 MB)
+2026-05-21 21:49:20  DEBUG      ok  Estabelecimentos9.zip  (367 MB)
+2026-05-21 21:49:20  DEBUG      ok  Motivos.zip  (0 MB)
+2026-05-21 21:49:20  DEBUG      ok  Municipios.zip  (0 MB)
+2026-05-21 21:49:20  DEBUG      ok  Naturezas.zip  (0 MB)
+2026-05-21 21:49:20  DEBUG      ok  Paises.zip  (0 MB)
+2026-05-21 21:49:20  DEBUG      ok  Qualificacoes.zip  (0 MB)
+2026-05-21 21:49:20  DEBUG      ok  Simples.zip  (294 MB)
+2026-05-21 21:49:20  DEBUG      ok  Socios0.zip  (232 MB)
+2026-05-21 21:49:20  DEBUG      ok  Socios1.zip  (50 MB)
+2026-05-21 21:49:20  DEBUG      ok  Socios2.zip  (49 MB)
+2026-05-21 21:49:20  DEBUG      ok  Socios3.zip  (49 MB)
+2026-05-21 21:49:20  DEBUG      ok  Socios4.zip  (49 MB)
+2026-05-21 21:49:20  DEBUG      ok  Socios5.zip  (49 MB)
+2026-05-21 21:49:20  DEBUG      ok  Socios6.zip  (49 MB)
+2026-05-21 21:49:20  DEBUG      ok  Socios7.zip  (49 MB)
+2026-05-21 21:49:20  DEBUG      ok  Socios8.zip  (50 MB)
+2026-05-21 21:49:20  DEBUG      ok  Socios9.zip  (49 MB)
+2026-05-21 21:49:20  INFO         ok (skip)      Cnaes.zip
+2026-05-21 21:49:20  INFO         INDISPONIVEL   Empresas0.zip
+2026-05-21 21:49:20  INFO         ok (skip)      Empresas1.zip
+2026-05-21 21:49:20  INFO         ok (skip)      Empresas2.zip
+2026-05-21 21:49:20  INFO         ok (skip)      Empresas3.zip
+2026-05-21 21:49:20  INFO         ok (skip)      Empresas4.zip
+2026-05-21 21:49:20  INFO         ok (skip)      Empresas5.zip
+2026-05-21 21:49:20  INFO         ok (skip)      Empresas6.zip
+2026-05-21 21:49:20  INFO         ok (skip)      Empresas7.zip
+2026-05-21 21:49:20  INFO         ok (skip)      Empresas8.zip
+2026-05-21 21:49:20  INFO         ok (skip)      Empresas9.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Estabelecimentos0.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Estabelecimentos1.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Estabelecimentos2.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Estabelecimentos3.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Estabelecimentos4.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Estabelecimentos5.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Estabelecimentos6.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Estabelecimentos7.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Estabelecimentos8.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Estabelecimentos9.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Motivos.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Municipios.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Naturezas.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Paises.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Qualificacoes.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Simples.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Socios0.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Socios1.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Socios2.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Socios3.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Socios4.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Socios5.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Socios6.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Socios7.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Socios8.zip
+2026-05-21 21:49:20  INFO         BAIXAR         Socios9.zip
+2026-05-21 21:49:20  WARNING    [2026-05] Mes bloqueado: 1 arquivo(s) indisponivel(is).
+2026-05-21 21:49:20  INFO     [dry-run] Nenhuma alteracao realizada.
+2026-05-21 21:49:20  INFO     ============================================================

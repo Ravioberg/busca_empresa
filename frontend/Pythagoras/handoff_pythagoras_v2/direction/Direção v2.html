@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pythagoras — Direção v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="direcao-v2.css">
+</head>
+<body>
+
+<article class="doc">
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       MEMO HEAD
+       ══════════════════════════════════════════════════════════════ -->
+  <header class="memo-head">
+    <div class="memo-meta">
+      <div class="memo-meta-cell">
+        <span class="lbl">Documento</span>
+        <span class="val">Direção v2 · Redesign</span>
+      </div>
+      <div class="memo-meta-cell">
+        <span class="lbl">Projeto</span>
+        <span class="val">Pythagoras · CNPJ Intel.</span>
+      </div>
+      <div class="memo-meta-cell">
+        <span class="lbl">Base</span>
+        <span class="val">Protótipo v0.1</span>
+      </div>
+      <div class="memo-meta-cell">
+        <span class="lbl">Status</span>
+        <span class="val">Para aprovação</span>
+      </div>
+    </div>
+
+    <div class="memo-eyebrow">Posicionamento</div>
+    <h1 class="memo-title">Do "consulta de CNPJ genérica" para uma <em>plataforma de inteligência temporal</em> sobre empresas brasileiras.</h1>
+    <p class="memo-deck">O protótipo atual é tecnicamente bom mas comunica um SaaS qualquer. O Pythagoras tem um diferencial real — o histórico de presença e qualificação de sócios mês a mês, que o CNPJá não tem. Esta direção pivota a UI para tornar isso o protagonista, tira o que é decorativo, e veste a marca de corporativo institucional.</p>
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       01 — A VIRADA
+       ══════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="section-num">A.01 · Diagnóstico</div>
+    <h2 class="section-title">O que muda na história que a UI conta</h2>
+    <p class="section-sub">A interface hoje é um cartão de visitas detalhado da empresa. A v2 entrega o mesmo cartão, mas com um <strong>eixo do tempo</strong> embutido em todo lugar — porque é isso que o backend está construindo.</p>
+
+    <div class="shift">
+      <div class="shift-col before">
+        <div class="shift-tag">v0.1 — hoje</div>
+        <h3 class="shift-headline">Consulta de CNPJ com extras genéricos</h3>
+        <ul class="shift-list">
+          <li>Sócios listados em uma única tabela, todos iguais</li>
+          <li>Timeline de eventos com "diff de capital social" (não existe no backend)</li>
+          <li>Mapa com lat/lng inventados</li>
+          <li>Visual warm + teal, parece um app de produtividade</li>
+          <li>Listas salvas / favoritos como decoração</li>
+          <li>Sem indicar quando a base foi vista pela última vez</li>
+        </ul>
+      </div>
+      <div class="shift-arrow">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </div>
+      <div class="shift-col after">
+        <div class="shift-tag">v2 — direção</div>
+        <h3 class="shift-headline">Inteligência cadastral com presença temporal</h3>
+        <ul class="shift-list">
+          <li><strong>Sócios Ativos</strong> e <strong>Ex-Sócios</strong> em blocos separados</li>
+          <li>Cada sócio com histórico de qualificações ("foi Sócio → virou Administrador em mai/26")</li>
+          <li>Situação especial (Recuperação Judicial, Falência) tratada com peso</li>
+          <li>Visual <strong>navy institucional</strong>, monoespaçada para números</li>
+          <li>Sem favoritos / listas / mapa — só o que o backend entrega</li>
+          <li>Indicador permanente: <span class="mono" style="font-size:11px; color:var(--ink-500);">"Base: 04/2026 · Visto pela 1ª vez: 03/2014"</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       02 — PALETA
+       ══════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="section-num">A.02 · Identidade</div>
+    <h2 class="section-title">Paleta corporativa — navy como base, azul como ação</h2>
+    <p class="section-sub">Seis tokens. Navy puxa para o institucional; o azul de ação fica reservado para CTAs e elementos que pedem clique. Os neutros são frios (slate), não quentes — combina com dados, planilha, relatório.</p>
+
+    <div class="palette">
+      <div class="swatch">
+        <div class="swatch-color dark" style="background:#0a1f3d"><span class="role">Hero</span></div>
+        <div class="swatch-meta">
+          <span class="swatch-name">Navy 900</span>
+          <span class="swatch-hex">#0A1F3D</span>
+          <span class="swatch-use">Login, sidebar, header de seção.</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color dark" style="background:#01244a"><span class="role">Primary</span></div>
+        <div class="swatch-meta">
+          <span class="swatch-name">Navy 800</span>
+          <span class="swatch-hex">#01244A</span>
+          <span class="swatch-use">Cor primária da marca. Headlines, ink forte.</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color dark" style="background:#0a6cb8"><span class="role">Action</span></div>
+        <div class="swatch-meta">
+          <span class="swatch-name">Blue 600</span>
+          <span class="swatch-hex">#0A6CB8</span>
+          <span class="swatch-use">Botões primários, links, ícones ativos.</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color dark" style="background:#0085ca"><span class="role">Accent</span></div>
+        <div class="swatch-meta">
+          <span class="swatch-name">Blue 500</span>
+          <span class="swatch-hex">#0085CA</span>
+          <span class="swatch-use">Hover de azul, indicadores de seleção.</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color light" style="background:#f7f9fc; border-bottom:1px solid var(--line);"><span class="role">Surface</span></div>
+        <div class="swatch-meta">
+          <span class="swatch-name">Surface</span>
+          <span class="swatch-hex">#F7F9FC</span>
+          <span class="swatch-use">Fundo do app. Frio, não warm.</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color light" style="background:#eef4f9"><span class="role">Soft</span></div>
+        <div class="swatch-meta">
+          <span class="swatch-name">Blue 50</span>
+          <span class="swatch-hex">#EEF4F9</span>
+          <span class="swatch-use">Hover de cards, chips, selecionados.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       03 — TIPOGRAFIA
+       ══════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="section-num">A.03 · Tipografia</div>
+    <h2 class="section-title">Três famílias, papéis definidos</h2>
+    <p class="section-sub">Inter Tight para títulos (mais condensada, mais autoritária), Inter para corpo, JetBrains Mono para qualquer coisa que é um identificador, número técnico, ou label. A regra é simples: <strong>se é dado, é mono</strong>.</p>
+
+    <div class="type-rows">
+      <div class="type-row">
+        <div class="meta"><strong>Inter Tight 36/700</strong><br>letter-spacing −0.025em</div>
+        <div class="sample type-display-xl">Marambaia Indústria de Alimentos</div>
+      </div>
+      <div class="type-row">
+        <div class="meta"><strong>Inter Tight 22/600</strong><br>letter-spacing −0.020em</div>
+        <div class="sample type-display-lg">Quadro societário e administrativo</div>
+      </div>
+      <div class="type-row">
+        <div class="meta"><strong>Inter 16/400</strong><br>line-height 1.55</div>
+        <div class="sample type-body-lg">Empresa fundada em março de 2014, com matriz em Feira de Santana/BA. Atua no beneficiamento de arroz e operações relacionadas.</div>
+      </div>
+      <div class="type-row">
+        <div class="meta"><strong>Inter 14/400</strong><br>line-height 1.55</div>
+        <div class="sample type-body">Sócios marcados como "Ex-Sócio" não constam no snapshot mais recente da base. A última presença foi em abril de 2024.</div>
+      </div>
+      <div class="type-row">
+        <div class="meta"><strong>Mono 10.5/600 CAPS</strong><br>tracking +0.10em</div>
+        <div class="sample type-label">CNPJ · Razão Social · Capital Social</div>
+      </div>
+      <div class="type-row">
+        <div class="meta"><strong>Mono 14/500</strong><br>números tabular</div>
+        <div class="sample type-mono-num">47.819.002/0001-70 &nbsp;·&nbsp; R$ 28.500.000 &nbsp;·&nbsp; 12/03/2014</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       04 — REMOÇÕES
+       ══════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="section-num">B.01 · Remoções</div>
+    <h2 class="section-title">O que sai do protótipo atual</h2>
+    <p class="section-sub">Tudo que é feature decorativa sem suporte do backend, ou que distrai do diferencial. Volta depois se fizer sentido — agora atrapalha.</p>
+
+    <div class="decisions">
+
+      <div class="decision">
+        <div class="decision-num">B.01.1</div>
+        <div class="decision-what">Timeline de eventos cadastrais com diffs</div>
+        <div class="decision-why">A RF não fornece diff de mudanças — está explícito no README do projeto. A timeline atual com "R$ 14,5M → 28,5M" é inventada. <span class="ref">app.jsx · sections.timeline</span></div>
+        <div class="decision-tag tag-remove">Remover</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.01.2</div>
+        <div class="decision-what">Mapa com pin e coordenadas</div>
+        <div class="decision-why">O backend não armazena lat/lng. Mostrar pin no mapa é decorativo e sugere precisão que não existe. Endereço continua, sem mapa. <span class="ref">styles.css · .map</span></div>
+        <div class="decision-tag tag-remove">Remover</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.01.3</div>
+        <div class="decision-what">Listas salvas / Fornecedores Tier 1</div>
+        <div class="decision-why">Não é prioridade da Fase 1 do projeto. Sidebar fica enxuta com nav + buscas recentes apenas. Volta quando houver demanda real. <span class="ref">app.jsx · Sidebar</span></div>
+        <div class="decision-tag tag-remove">Remover</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.01.4</div>
+        <div class="decision-what">Risk signals genéricos (4 itens fixos)</div>
+        <div class="decision-why">Os sinais atuais são placeholder — "ativa há 11 anos", "sem pendências". Sem regras de cálculo definidas, vira decoração. Substituído por <em>indicadores temporais factuais</em>. <span class="ref">app.jsx · sections.sinais</span></div>
+        <div class="decision-tag tag-remove">Remover</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.01.5</div>
+        <div class="decision-what">Tweak de matiz de accent (slider 0-360°)</div>
+        <div class="decision-why">Decisão de identidade não fica em slider de usuário. A paleta é navy + azul, fim. <span class="ref">app.jsx · TWEAK_DEFAULTS.accentHue</span></div>
+        <div class="decision-tag tag-remove">Remover</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.01.6</div>
+        <div class="decision-what">Modo escuro</div>
+        <div class="decision-why">Plataforma corporativa B2B raramente usa dark mode em produção, e dobra a superfície de teste. Foco em uma versão light bem feita. <span class="ref">styles.css · [data-theme="dark"]</span></div>
+        <div class="decision-tag tag-defer">Adiar</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.01.7</div>
+        <div class="decision-what">Layout em abas (toggle single/tabs)</div>
+        <div class="decision-why">Mantém só "página única". Tab navigation em página de detalhe esconde informação — em due diligence o usuário quer scroll. <span class="ref">app.jsx · TWEAK_DEFAULTS.layout</span></div>
+        <div class="decision-tag tag-remove">Remover</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.01.8</div>
+        <div class="decision-what">Tweak de densidade (compact / cozy / spacious)</div>
+        <div class="decision-why">Escolher UMA densidade certa. Densidade compacta vira o default — é uma ferramenta de dados, não um blog. <span class="ref">styles.css · [data-density="..."]</span></div>
+        <div class="decision-tag tag-remove">Remover</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       05 — ADIÇÕES
+       ══════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="section-num">B.02 · Adições</div>
+    <h2 class="section-title">O que entra — tudo lastreado no backend real</h2>
+    <p class="section-sub">Cada item abaixo já existe no schema da base (Empresa, Estabelecimento, Sócios, Simples) ou é trivialmente derivável dos campos <span class="mono" style="font-size:12px">dt_primeira_carga</span> / <span class="mono" style="font-size:12px">dt_ultima_atualizacao</span>. Sem invenção.</p>
+
+    <div class="decisions">
+
+      <div class="decision">
+        <div class="decision-num">B.02.1</div>
+        <div class="decision-what">Seção "Ex-Sócios" separada de "Sócios Ativos"</div>
+        <div class="decision-why">O diferencial #1 do projeto. Sócios com <span class="mono">dt_ultima_atualizacao</span> menor que o mês mais recente entram aqui, com a data em que foram vistos pela última vez. <span class="ref">backend · socios.dt_ultima_atualizacao</span></div>
+        <div class="decision-tag tag-add">Adicionar</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.02.2</div>
+        <div class="decision-what">Histórico de qualificações por sócio</div>
+        <div class="decision-why">Como a chave natural inclui <span class="mono">cd_qualificacaosocio</span>, mudanças de papel geram múltiplos registros. Cada sócio mostra qualificação atual + anteriores ("Sócio até abr/26 → Administrador desde mai/26"). <span class="ref">README · regras de negócio</span></div>
+        <div class="decision-tag tag-add">Adicionar</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.02.3</div>
+        <div class="decision-what">Situação especial em destaque (Recup. Judicial, Falência)</div>
+        <div class="decision-why">Texto livre da RF, mas quando preenchido, é o sinal mais importante da empresa. Vira faixa de alerta no topo do card. <span class="ref">backend · estabelecimento.nm_situacaoespecial</span></div>
+        <div class="decision-tag tag-add">Adicionar</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.02.4</div>
+        <div class="decision-what">Indicadores temporais persistentes</div>
+        <div class="decision-why">No header de cada empresa: "Vista pela 1ª vez em mar/2014 · Última atualização da base: abr/2026". Define o tom do produto inteiro. <span class="ref">backend · empresa.dt_primeira_carga</span></div>
+        <div class="decision-tag tag-add">Adicionar</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.02.5</div>
+        <div class="decision-what">Motivo da situação cadastral</div>
+        <div class="decision-why">Quando empresa está Baixada/Suspensa, mostrar o motivo da tabela de domínio Motivos. Hoje só aparece "Baixada" — agora "Baixada · Encerramento por extinção". <span class="ref">backend · estabelecimento.cd_motivosituacaocadastral</span></div>
+        <div class="decision-tag tag-add">Adicionar</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.02.6</div>
+        <div class="decision-what">Faixa etária dos sócios PF</div>
+        <div class="decision-why">Coluna discreta na tabela de sócios — útil em due diligence para identificar sócio idoso/herdeiro. <span class="ref">backend · socios.cd_faixaetaria</span></div>
+        <div class="decision-tag tag-add">Adicionar</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.02.7</div>
+        <div class="decision-what">Aviso "Matriz baixada, filial ativa"</div>
+        <div class="decision-why">Caso conhecido na base (6.648 empresas em 04/2026). Em vez de mostrar como contradição silenciosa, banner informativo explicando a situação. <span class="ref">README · exceções</span></div>
+        <div class="decision-tag tag-add">Adicionar</div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-num">B.02.8</div>
+        <div class="decision-what">Resultado de Sócio: empresas atuais × empresas passadas</div>
+        <div class="decision-why">Mesma lógica dos sócios — quando busca por CPF, separar empresas onde a pessoa <em>ainda</em> é sócia das empresas onde <em>foi</em>, com período. <span class="ref">backend · socios join empresa</span></div>
+        <div class="decision-tag tag-add">Adicionar</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       06 — TELAS
+       ══════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="section-num">C.01 · Aplicação por tela</div>
+    <h2 class="section-title">O que muda concretamente em cada arquivo</h2>
+    <p class="section-sub">Mapeamento direto para os componentes JSX que existem no protótipo + os do repo do GitHub (<span class="mono" style="font-size:12px">frontend/src/components/</span>).</p>
+
+    <div class="screens">
+
+      <!-- LOGIN -->
+      <div class="screen-block">
+        <div class="screen-meta">
+          <div class="screen-stage">Tela 01</div>
+          <div class="screen-name">Login</div>
+          <div class="screen-files">
+            <span>frontend/src/components/</span>
+            <span style="color:var(--navy-900)">Login.jsx</span>
+          </div>
+        </div>
+        <div class="screen-changes">
+          <div class="change is-add">
+            <div class="change-kind">Novo</div>
+            <div class="change-body">Split-screen <strong>navy gradient</strong> (Navy 900 → Navy 700) à esquerda com logo Pythagoras grande + tagline curta em PT-BR. À direita, formulário em paper branco.</div>
+          </div>
+          <div class="change is-keep">
+            <div class="change-kind">Manter</div>
+            <div class="change-body">Campos de e-mail e senha. CTA "Entrar" passa a usar <span class="ref">Blue 600 #0A6CB8</span>.</div>
+          </div>
+          <div class="change is-remove">
+            <div class="change-kind">Remover</div>
+            <div class="change-body">Foto stock de teclado/notebook. Substituir por gradient + monogram.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HOME -->
+      <div class="screen-block">
+        <div class="screen-meta">
+          <div class="screen-stage">Tela 02</div>
+          <div class="screen-name">Home / Seleção</div>
+          <div class="screen-files">
+            <span>frontend/src/components/</span>
+            <span style="color:var(--navy-900)">HomeSelecao.jsx</span>
+          </div>
+        </div>
+        <div class="screen-changes">
+          <div class="change is-keep">
+            <div class="change-kind">Manter</div>
+            <div class="change-body">Estrutura de 2 cards lado a lado (Empresa / Sócio). Já está bem.</div>
+          </div>
+          <div class="change is-add">
+            <div class="change-kind">Novo</div>
+            <div class="change-body">Embaixo dos cards: linha <strong>"Última base processada: abril/2026 · 107M registros · 67M empresas"</strong> em mono. Comunica autoridade do dado.</div>
+          </div>
+          <div class="change is-add">
+            <div class="change-kind">Novo</div>
+            <div class="change-body">Hover dos cards: borda em <span class="ref">Blue 600</span> com sombra ambient. Ícone do card em navy.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SIDEBAR -->
+      <div class="screen-block">
+        <div class="screen-meta">
+          <div class="screen-stage">Tela 03</div>
+          <div class="screen-name">Sidebar (shell)</div>
+          <div class="screen-files">
+            <span>frontend/src/components/</span>
+            <span style="color:var(--navy-900)">Sidebar.jsx</span>
+          </div>
+        </div>
+        <div class="screen-changes">
+          <div class="change is-add">
+            <div class="change-kind">Novo</div>
+            <div class="change-body">Fundo <strong>Navy 900</strong> sólido. Texto branco/cinza claro. Item ativo com border-left em Blue 500 + fundo Blue 500 a 12%.</div>
+          </div>
+          <div class="change is-keep">
+            <div class="change-kind">Manter</div>
+            <div class="change-body">Buscas recentes. Continua sendo útil em workflow de due diligence.</div>
+          </div>
+          <div class="change is-remove">
+            <div class="change-kind">Remover</div>
+            <div class="change-body">"Listas salvas" (Fornecedores Tier 1, Due dil. Q1). Sem feature real por trás.</div>
+          </div>
+          <div class="change is-remove">
+            <div class="change-kind">Remover</div>
+            <div class="change-body">Barra de "412 / 1.000" no footer. Não há sistema de quota real.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BUSCA -->
+      <div class="screen-block">
+        <div class="screen-meta">
+          <div class="screen-stage">Tela 04</div>
+          <div class="screen-name">Busca</div>
+          <div class="screen-files">
+            <span>frontend/src/components/</span>
+            <span style="color:var(--navy-900)">BuscaEmpresa.jsx</span>
+            <span style="color:var(--navy-900)">BuscaSocio.jsx</span>
+          </div>
+        </div>
+        <div class="screen-changes">
+          <div class="change is-keep">
+            <div class="change-kind">Manter</div>
+            <div class="change-body">Busca inteligente com detecção automática (CNPJ, CPF, nome) — já tá certo conceitualmente.</div>
+          </div>
+          <div class="change is-add">
+            <div class="change-kind">Novo</div>
+            <div class="change-body">Validação mod-11 do CNPJ em tempo real (já existe no protótipo, portar pro repo).</div>
+          </div>
+          <div class="change is-add">
+            <div class="change-kind">Novo</div>
+            <div class="change-body">Aviso fixo em busca por CPF: <em>"A Receita Federal omite 5 dígitos do CPF — resultados podem incluir múltiplas pessoas com mesmos dígitos visíveis."</em></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RESULTADO EMPRESA -->
+      <div class="screen-block">
+        <div class="screen-meta">
+          <div class="screen-stage">Tela 05 — central</div>
+          <div class="screen-name">Resultado Empresa</div>
+          <div class="screen-files">
+            <span>frontend/src/components/</span>
+            <span style="color:var(--navy-900)">ResultadoEmpresa.jsx</span>
+          </div>
+
+          <!-- Inline mock of new header -->
+          <div style="margin-top: 20px;">
+            <div class="mock-frame">
+              <div class="mock-bar"><i></i><i></i><i></i></div>
+              <div class="mock-result">
+                <div class="eyebrow">
+                  <span>47.819.002/0001-70</span>
+                  <span class="pill">ATIVA</span>
+                  <span>· Matriz</span>
+                </div>
+                <div class="name">Marambaia Indústria de Alimentos S.A.</div>
+                <div class="temporal">
+                  <i><b>mar/2014</b><span>1ª vez na base</span></i>
+                  <i><b>abr/2026</b><span>Última atualização</span></i>
+                  <i><b>5 sócios</b><span>2 ex-sócios</span></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="screen-changes">
+          <div class="change is-add">
+            <div class="change-kind">Novo</div>
+            <div class="change-body"><strong>Header com indicadores temporais</strong> — três células mono na base: 1ª vez na base, última atualização, contagem de sócios ativos/ex-sócios. (ver mock à esquerda)</div>
+          </div>
+          <div class="change is-add">
+            <div class="change-kind">Novo</div>
+            <div class="change-body"><strong>Faixa de situação especial</strong> acima do nome quando <span class="ref">nm_situacaoespecial</span> está preenchido — fundo vermelho/âmbar, mono, com data desde.</div>
+          </div>
+          <div class="change is-keep">
+            <div class="change-kind">Manter</div>
+            <div class="change-body">Grids KV de Identificação, Endereço, CNAEs. Já tem a densidade certa.</div>
+          </div>
+          <div class="change is-remove">
+            <div class="change-kind">Remover</div>
+            <div class="change-body">Mapa, painel de sinais genéricos, timeline com diffs, botões "Favoritar" e "Compartilhar".</div>
+          </div>
+          <div class="change is-keep">
+            <div class="change-kind">Manter</div>
+            <div class="change-body">Botão "Exportar PDF" — útil em due diligence, gera relatório do estado atual.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- QSA -->
+      <div class="screen-block">
+        <div class="screen-meta">
+          <div class="screen-stage">Tela 05a — coração do produto</div>
+          <div class="screen-name">Quadro Societário</div>
+          <div class="screen-files">
+            <span>dentro de ResultadoEmpresa.jsx</span>
+            <span style="color:var(--navy-900)">seção QSA</span>
+          </div>
+
+          <!-- Inline mock of sócios ativos/inativos -->
+          <div style="margin-top: 20px;">
+            <div class="mock-frame">
+              <div class="mock-socios">
+                <div class="grp"><span>Sócios Ativos</span><span class="ct">5</span></div>
+                <div class="row">
+                  <div>
+                    <div class="nm">Heloísa Andrade Queiroz</div>
+                    <div class="ql">Diretora Presidente · 21–30 anos</div>
+                  </div>
+                  <span class="since">desde 12/03/14</span>
+                </div>
+                <div class="row">
+                  <div>
+                    <div class="nm">Otávio Ramalho Sampaio<span class="changed">mudou</span></div>
+                    <div class="ql">Sócio (12/14 → 04/26) → Administrador (mai/26)</div>
+                  </div>
+                  <span class="since">desde 05/26</span>
+                </div>
+                <div class="grp"><span>Ex-Sócios</span><span class="ct">2</span></div>
+                <div class="row inactive">
+                  <div>
+                    <div class="nm">Construtora Boqueirão Ltda.</div>
+                    <div class="ql">Sócia Quotista · PJ</div>
+                  </div>
+                  <span class="since warn">saiu em abr/24</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="screen-changes">
+          <div class="change is-add">
+            <div class="change-kind">Novo · #1</div>
+            <div class="change-body"><strong>Dois blocos separados:</strong> "Sócios Ativos" (no snapshot atual) e "Ex-Sócios" (saíram). Ex-Sócios com texto em cinza e "saiu em mm/aa" em âmbar.</div>
+          </div>
+          <div class="change is-add">
+            <div class="change-kind">Novo · #2</div>
+            <div class="change-body"><strong>Badge "mudou"</strong> em sócios cuja qualificação evoluiu. Expand do row mostra timeline mini da progressão.</div>
+          </div>
+          <div class="change is-add">
+            <div class="change-kind">Novo</div>
+            <div class="change-body">Coluna de faixa etária ao lado da qualificação. Discreto, mono.</div>
+          </div>
+          <div class="change is-keep">
+            <div class="change-kind">Manter</div>
+            <div class="change-body">Avatar quadrado para PJ, redondo para PF. CPF mascarado em mono.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RESULTADO SÓCIO -->
+      <div class="screen-block">
+        <div class="screen-meta">
+          <div class="screen-stage">Tela 06</div>
+          <div class="screen-name">Resultado Sócio</div>
+          <div class="screen-files">
+            <span>frontend/src/components/</span>
+            <span style="color:var(--navy-900)">ResultadoSocio.jsx</span>
+          </div>
+        </div>
+        <div class="screen-changes">
+          <div class="change is-add">
+            <div class="change-kind">Novo</div>
+            <div class="change-body">Mesmo padrão temporal: "Empresas Atuais" + "Empresas Passadas". Cada empresa com período de participação ("Sócio de 03/14 até 04/24").</div>
+          </div>
+          <div class="change is-add">
+            <div class="change-kind">Novo</div>
+            <div class="change-body">Aviso permanente sobre busca parcial por CPF, idem busca.</div>
+          </div>
+          <div class="change is-keep">
+            <div class="change-kind">Manter</div>
+            <div class="change-body">Avatar com iniciais. Linha de "Total de empresas: N · UFs: lista".</div>
+          </div>
+          <div class="change is-remove">
+            <div class="change-kind">Remover</div>
+            <div class="change-body">"Total Capital Allocation" — RF não dá percentual de participação para todos os tipos de sócio. Engana.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       07 — FUTURO: GRAFO
+       ══════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="section-num">D.01 · Roadmap visual</div>
+    <h2 class="section-title">Reservar o espaço da rede de relacionamentos</h2>
+    <p class="section-sub">O próximo grande diferencial — grafo de sócios e empresas — não precisa ser construído agora, mas a arquitetura de informação já deve antecipar. Um botão "Ver rede" ghost no header, desativado, comunica que está vindo.</p>
+
+    <div class="future">
+      <div class="future-body">
+        <div class="future-eyebrow"><span class="dot"></span>v3 · Próximo grande passo</div>
+        <h3 class="future-title">Rede de sócios e empresas</h3>
+        <p class="future-desc">Dado um CNPJ ou CPF, mostrar visualmente as conexões 2º grau — sócios em comum, fundos compartilhados, holdings. O que uma tabela esconde, o grafo expõe.</p>
+        <ul class="future-bullets">
+          <li>Nodes em Navy (empresas) e Blue (pessoas)</li>
+          <li>Edges com peso pelo tipo de relação</li>
+          <li>Filtros: só ativos / incluir ex-sócios</li>
+          <li>Toggle Tabela ↔ Grafo</li>
+        </ul>
+      </div>
+      <div class="future-visual">
+        <svg class="graph-mock" viewBox="0 0 280 280" fill="none">
+          <!-- edges -->
+          <g stroke="#2a4a82" stroke-width="1" opacity="0.6">
+            <line x1="140" y1="140" x2="60" y2="60"/>
+            <line x1="140" y1="140" x2="220" y2="60"/>
+            <line x1="140" y1="140" x2="40" y2="180"/>
+            <line x1="140" y1="140" x2="120" y2="230"/>
+            <line x1="140" y1="140" x2="240" y2="200"/>
+            <line x1="60" y1="60" x2="100" y2="30"/>
+            <line x1="240" y1="200" x2="260" y2="150"/>
+            <line x1="220" y1="60" x2="240" y2="200" stroke-dasharray="3 3"/>
+          </g>
+          <!-- nodes -->
+          <circle cx="140" cy="140" r="32" fill="#0a6cb8"/>
+          <text x="140" y="138" text-anchor="middle" fill="white" font-size="9" font-family="Inter Tight" font-weight="600">MARAMBAIA</text>
+          <text x="140" y="150" text-anchor="middle" fill="#dee7f0" font-size="7" font-family="JetBrains Mono">47.819...</text>
+          <circle cx="60" cy="60" r="16" fill="#3d6cb0" stroke="#0a1f3d" stroke-width="2"/>
+          <text x="60" y="64" text-anchor="middle" fill="white" font-size="7" font-weight="600">SÓCIO</text>
+          <circle cx="220" cy="60" r="16" fill="#3d6cb0" stroke="#0a1f3d" stroke-width="2"/>
+          <text x="220" y="64" text-anchor="middle" fill="white" font-size="7" font-weight="600">FUNDO</text>
+          <circle cx="40" cy="180" r="14" fill="#0a6cb8" stroke="#0a1f3d" stroke-width="2"/>
+          <text x="40" y="184" text-anchor="middle" fill="white" font-size="7" font-weight="600">FIL.</text>
+          <circle cx="120" cy="230" r="12" fill="#0a6cb8" stroke="#0a1f3d" stroke-width="2"/>
+          <text x="120" y="234" text-anchor="middle" fill="white" font-size="6.5" font-weight="600">EMP.</text>
+          <circle cx="240" cy="200" r="18" fill="#01244a" stroke="#0a1f3d" stroke-width="2"/>
+          <text x="240" y="204" text-anchor="middle" fill="white" font-size="7" font-weight="600">HOLD.</text>
+          <circle cx="100" cy="30" r="8" fill="#dee7f0" stroke="#3d6cb0" stroke-width="1.5"/>
+          <circle cx="260" cy="150" r="8" fill="#dee7f0" stroke="#3d6cb0" stroke-width="1.5"/>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       08 — ROADMAP
+       ══════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="section-num">E.01 · Próximos passos</div>
+    <h2 class="section-title">Ordem sugerida de execução</h2>
+    <p class="section-sub">Aplicar a paleta primeiro (visual change rápido com impacto grande), depois reestruturar o QSA (o coração do produto), depois enxugar.</p>
+
+    <div class="roadmap">
+      <div class="road-row">
+        <div class="road-step">PASSO 1</div>
+        <div class="road-name">
+          Aplicar paleta navy + tipografia no protótipo
+          <span class="sub">tailwind.config.js, tokens CSS, sidebar, login. Visual já vira corporativo.</span>
+        </div>
+        <div class="road-effort">≈ 1 sessão</div>
+      </div>
+      <div class="road-row">
+        <div class="road-step">PASSO 2</div>
+        <div class="road-name">
+          Reestruturar Quadro Societário (Ativos × Ex)
+          <span class="sub">O diferencial principal aparece pela primeira vez. Mockar com MOCK_COMPANY antes de tocar no backend.</span>
+        </div>
+        <div class="road-effort">≈ 1–2 sessões</div>
+      </div>
+      <div class="road-row">
+        <div class="road-step">PASSO 3</div>
+        <div class="road-name">
+          Header de empresa com indicadores temporais
+          <span class="sub">3 células mono: 1ª vez visto, última atualização, contagens. Substitui chips atuais.</span>
+        </div>
+        <div class="road-effort">≈ 1 sessão</div>
+      </div>
+      <div class="road-row">
+        <div class="road-step">PASSO 4</div>
+        <div class="road-name">
+          Remoções (mapa, timeline fake, sinais, tweaks excedentes)
+          <span class="sub">Cirurgia. Backend e UI ficam alinhados.</span>
+        </div>
+        <div class="road-effort">≈ 1 sessão</div>
+      </div>
+      <div class="road-row">
+        <div class="road-step">PASSO 5</div>
+        <div class="road-name">
+          Refinar Resultado Sócio com mesmo padrão temporal
+          <span class="sub">Empresas atuais / passadas. Aviso de CPF parcial fixo.</span>
+        </div>
+        <div class="road-effort">≈ 1 sessão</div>
+      </div>
+      <div class="road-row">
+        <div class="road-step">PASSO 6</div>
+        <div class="road-name">
+          Portar do protótipo para o repo real
+          <span class="sub">Mover tokens e componentes pro frontend/src/. Reaproveitar BuscaEmpresa / ResultadoEmpresa.</span>
+        </div>
+        <div class="road-effort">≈ 2 sessões</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       CLOSING
+       ══════════════════════════════════════════════════════════════ -->
+  <section class="closing">
+    <div class="closing-eyebrow">Aprovação</div>
+    <h2>Aprovada essa direção, o próximo passo é construir.</h2>
+    <p>Posso transformar isso em um protótipo navegável já com paleta navy aplicada, QSA reestruturado e header temporal — a partir do <span class="mono" style="font-size:13px; color:white;">Pythagoras - Busca de CNPJ.html</span> que já existe. Você pode comparar lado a lado e decidir o que quer portar pro repo real.</p>
+    <div class="closing-actions">
+      <button class="btn-primary">Construir protótipo v2 →</button>
+      <button class="btn-ghost">Ajustar a direção</button>
+    </div>
+  </section>
+
+</article>
+
+</body>
+</html>

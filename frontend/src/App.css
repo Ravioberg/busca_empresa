@@ -7,6 +7,21 @@
   body { font-family: "Inter", sans-serif; }
 }
 
+/* Scrollbar discreto para a sidebar navy */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
 @layer utilities {
   .ambient-shadow {
     box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);

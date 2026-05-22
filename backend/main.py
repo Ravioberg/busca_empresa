@@ -1,7 +1,8 @@
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from dotenv import load_dotenv
@@ -45,3 +46,8 @@ app.include_router(socio.router)
 @app.get("/health")
 def health():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/api/v1/info")
+def info(db: Session = Depends(get_db)):
+    return {"mes_atual": crud._get_mes_atual(db)}

@@ -97,46 +97,66 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
   const totalPags = Math.ceil(total / LIMIT);
 
   return (
-    <main className="flex-1 md:ml-64 overflow-y-auto bg-surface min-h-screen">
-      <header className="sticky top-0 z-50 flex items-center justify-between px-8 h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm">
+    <main className="flex-1 md:ml-52 overflow-y-auto bg-[#f7f9fc] min-h-screen">
+      <header className="sticky top-0 z-50 flex items-center justify-between px-8 h-14 bg-white/90 backdrop-blur-md border-b border-[#e2e8f0]">
         <button
           onClick={onVoltar}
-          className="flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors text-body-sm font-medium"
+          className="flex items-center gap-2 text-[13px] font-medium transition-colors"
+          style={{ color: "#64748b" }}
+          onMouseEnter={e => e.currentTarget.style.color = "#0085ca"}
+          onMouseLeave={e => e.currentTarget.style.color = "#64748b"}
         >
-          <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+          <span className="material-symbols-outlined text-[17px]">arrow_back</span>
           Seleção de Pesquisa
         </button>
-        <span className="text-xl font-black text-slate-900 hidden md:block">CorpIntel</span>
-        <div className="w-40" />
+        <div className="w-32" />
       </header>
 
       <div className="max-w-[1000px] mx-auto w-full px-4 md:px-8 py-10">
         <div className="flex flex-col items-center text-center mb-12 mt-8">
-          <h1 className="text-display-lg text-on-surface mb-4 tracking-tight">Pesquisa por Sócio</h1>
-          <p className="text-body-lg text-on-surface-variant max-w-2xl">
+          <h1
+            className="text-[38px] font-semibold leading-tight tracking-tight mb-3"
+            style={{ fontFamily: "'Inter Tight', Inter, sans-serif", color: "#0f172a" }}
+          >
+            Pesquisa por Sócio
+          </h1>
+          <p className="text-[15px] leading-relaxed max-w-2xl" style={{ color: "#64748b" }}>
             Verifique e analise sócios, beneficiários e partes interessadas via CPF ou nome completo.
           </p>
-          <p className="text-body-sm text-on-surface-variant mt-2 flex items-center gap-1 max-w-xl text-center">
-            <span className="material-symbols-outlined text-[14px] text-outline shrink-0">info</span>
-            A RF oculta os 3 primeiros e 2 últimos dígitos do CPF. Ao digitar um CPF completo a busca tenta automaticamente os dígitos do meio. Um CPF pode retornar mais de uma pessoa.
-          </p>
+          <div className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px]" style={{ background: "#f1f5f9", color: "#64748b" }}>
+            <span className="material-symbols-outlined text-[13px]" style={{ color: "#94a3b8" }}>info</span>
+            CPF na base RFB:
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.05em" }}>
+              <span style={{ color: "#94a3b8" }}>***.</span>
+              <span style={{ color: "#0f172a" }}>000</span>
+              <span style={{ color: "#94a3b8" }}>.</span>
+              <span style={{ color: "#0f172a" }}>000</span>
+              <span style={{ color: "#94a3b8" }}>-**</span>
+            </span>
+          </div>
         </div>
 
         {/* Barra de busca */}
         <div className="relative w-full max-w-3xl mx-auto z-20">
           <form onSubmit={buscar}>
-            <div className="relative flex items-center w-full h-[72px] rounded-xl bg-surface-container-lowest border-2 border-outline-variant shadow-search focus-within:border-primary focus-within:ring-4 focus-within:ring-primary-fixed-dim/30 transition-all">
-              <span className={`absolute left-6 text-[28px] transition-colors ${loading ? "text-outline animate-spin" : "text-on-surface-variant"}`}>
-                <span className="material-symbols-outlined text-[28px]">
-                  {loading ? "progress_activity" : "search"}
-                </span>
+            <div
+              className="relative flex items-center w-full h-[68px] rounded-xl bg-white transition-all"
+              style={{ border: "1.5px solid #e2e8f0", boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}
+            >
+              <span
+                className={`material-symbols-outlined absolute left-5 text-[26px] transition-colors ${loading ? "animate-spin" : ""}`}
+                style={{ color: loading ? "#94a3b8" : "#0085ca", fontVariationSettings: "'FILL' 1" }}
+              >
+                {loading ? "progress_activity" : "search"}
               </span>
               <input
                 ref={inputRef}
-                className="w-full h-full pl-[72px] pr-20 bg-transparent border-none outline-none text-headline-md text-on-surface placeholder:text-outline-variant placeholder:font-normal"
+                className="w-full h-full pl-[62px] pr-16 bg-transparent border-none outline-none text-[16px] text-[#0f172a] placeholder:text-[#94a3b8]"
                 placeholder="Digite o CPF ou Nome do Sócio..."
                 value={termo}
                 onChange={(e) => setTermo(e.target.value)}
+                onFocus={e => e.currentTarget.closest("div").style.borderColor = "#0085ca"}
+                onBlur={e => e.currentTarget.closest("div").style.borderColor = "#e2e8f0"}
                 autoFocus
               />
               <div className="absolute right-4 flex items-center gap-2">
@@ -224,6 +244,12 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 text-[11px] font-medium">
                           <span className="material-symbols-outlined text-[11px]">verified</span>
                           {s.n_ativas} ativa{s.n_ativas !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {s.n_inaptas > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-medium">
+                          <span className="material-symbols-outlined text-[11px]">warning</span>
+                          {s.n_inaptas} inapta{s.n_inaptas !== 1 ? "s" : ""}
                         </span>
                       )}
                       {s.n_ex > 0 && (

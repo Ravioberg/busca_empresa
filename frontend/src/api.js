@@ -31,6 +31,13 @@ async function _get(path, signal) {
   return res.json();
 }
 
+// ── Info ─────────────────────────────────────────────────────────────────
+
+export async function fetchInfo() {
+  try { return await _get("/api/v1/info", null); }
+  catch { return null; }
+}
+
 // ── Empresa ───────────────────────────────────────────────────────────────
 
 export async function buscarEmpresaPorCnpj(cnpj) {
@@ -63,7 +70,7 @@ export async function buscarEmpresaPorNome(nome, skip = 0, limit = 20, knownTota
 export async function buscarPerfilSocio(cpf, nome) {
   const params = new URLSearchParams();
   if (cpf) params.set("cpf", cpf.replace(/\D/g, ""));
-  else if (nome) params.set("nome", nome);
+  if (nome) params.set("nome", nome);
   const key = `perfil:${params.toString()}`;
   const cached = _cacheGet(key);
   if (cached) return cached;

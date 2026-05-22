@@ -32,6 +32,22 @@ class CnaeItem(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class FilialItem(BaseModel):
+    cnpj_completo: Optional[str] = None
+    cnpj_completo_formatado: Optional[str] = None
+    nome_fantasia: Optional[str] = None
+    tipo: Optional[str] = None
+    situacao_cadastral: Optional[str] = None
+    data_inicio: Optional[str] = None
+    uf: Optional[str] = None
+    municipio: Optional[str] = None
+    cnae_principal_codigo: Optional[str] = None
+    cnae_principal_descricao: Optional[str] = None
+    atual: bool = False
+
+    model_config = {"from_attributes": True}
+
+
 class EmpresaDetalhe(BaseModel):
     cnpj_basico: str
     cnpj_completo: Optional[str] = None
@@ -77,6 +93,7 @@ class EmpresaDetalhe(BaseModel):
     data_exclusao_mei: Optional[str] = None
     socios_ativos: List[SocioCompleto] = []
     socios_inativos: List[SocioCompleto] = []
+    filiais: List[FilialItem] = []
     dt_primeira_carga: Optional[str] = None
     dt_ultima_atualizacao: Optional[str] = None
 
@@ -102,6 +119,7 @@ class SocioListItem(BaseModel):
     identificador: Optional[str] = None
     faixa_etaria: Optional[str] = None
     n_ativas: int = 0
+    n_inaptas: int = 0
     n_ex: int = 0
 
     model_config = {"from_attributes": True}

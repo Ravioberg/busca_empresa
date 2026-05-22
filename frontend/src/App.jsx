@@ -10,7 +10,7 @@ import ResultadoEmpresa from "./components/ResultadoEmpresa";
 import ResultadoSocio from "./components/ResultadoSocio";
 
 export default function App() {
-  const [tela, setTela] = useState("login");
+  const [tela, setTela] = useState("home");
   const [telaAnterior, setTelaAnterior] = useState(null);
   const [empresaDetalhe, setEmpresaDetalhe] = useState(null);
   const [socioInicial, setSocioInicial] = useState(null);
@@ -95,6 +95,7 @@ export default function App() {
             dados={empresaDetalhe}
             onVoltar={() => irPara(telaAnterior || "empresa")}
             onVerSocio={abrirSocio}
+            onVerEmpresa={abrirEmpresa}
           />
         )}
 

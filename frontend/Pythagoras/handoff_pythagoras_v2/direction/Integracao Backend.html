@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pythagoras v2 — Integração com backend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="direcao-v2.css">
+<link rel="stylesheet" href="integracao-v2.css">
+</head>
+<body>
+<article class="doc">
+
+  <!-- ── HEAD ────────────────────────────────────────────────────── -->
+  <header class="memo-head">
+    <div class="memo-meta">
+      <div class="memo-meta-cell"><span class="lbl">Documento</span><span class="val">Integração Backend</span></div>
+      <div class="memo-meta-cell"><span class="lbl">Protótipo</span><span class="val">Pythagoras v2.html</span></div>
+      <div class="memo-meta-cell"><span class="lbl">Repo</span><span class="val">Ravioberg/busca_empresa</span></div>
+      <div class="memo-meta-cell"><span class="lbl">Audiência</span><span class="val">Backend + integrador</span></div>
+    </div>
+    <div class="memo-eyebrow">Handoff técnico</div>
+    <h1 class="memo-title">Como o <em>protótipo v2</em> se conecta ao backend FastAPI existente.</h1>
+    <p class="memo-deck">Documento de implementação: shape exato de cada endpoint, mapeamento campo-a-campo, lógica de Ativos × Ex-Sócios, tradução de códigos da RF, edge cases já documentados no README do projeto, e ordem prática de implementação.</p>
+  </header>
+
+  <!-- ── TOC ─────────────────────────────────────────────────────── -->
+  <div style="padding: 0 64px;">
+    <div class="toc">
+      <div class="toc-title">Sumário</div>
+      <ol class="toc-list">
+        <li><a href="#vg"><span class="n">01</span> Visão geral da integração</a></li>
+        <li><a href="#ep"><span class="n">02</span> Endpoints necessários</a></li>
+        <li><a href="#shape"><span class="n">03</span> Shape da resposta de empresa</a></li>
+        <li><a href="#mapping"><span class="n">04</span> Mapeamento campo-a-campo</a></li>
+        <li><a href="#qsa"><span class="n">05</span> Lógica: Ativos × Ex-sócios</a></li>
+        <li><a href="#qual"><span class="n">06</span> Histórico de qualificações</a></li>
+        <li><a href="#codes"><span class="n">07</span> Tradução de códigos da RF</a></li>
+        <li><a href="#edge"><span class="n">08</span> Edge cases conhecidos</a></li>
+        <li><a href="#search"><span class="n">09</span> Busca por texto (FTS5 / pg_trgm)</a></li>
+        <li><a href="#steps"><span class="n">10</span> Ordem de implementação</a></li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ── 01. VISÃO GERAL ─────────────────────────────────────────── -->
+  <section class="section" id="vg">
+    <div class="section-num">01 · Visão geral</div>
+    <h2 class="section-title">Modelo cliente-servidor — frontend stateless, backend faz o trabalho pesado</h2>
+    <p class="section-sub">O frontend não decodifica nada nem aplica lógica de negócio. Todos os códigos da RF (situação, qualificação, identificador de sócio, faixa etária) chegam <strong>já traduzidos como texto</strong>. A separação Ativos/Ex-sócios e o histórico de qualificações também são responsabilidade do backend.</p>
+
+    <div class="flow">
+      <div class="flow-step input">
+        <span class="tag">Frontend</span>
+        <div class="body">Envia <code>GET /api/v1/empresa/47819002000170</code> — só o CNPJ raw (14 dígitos numéricos).</div>
+      </div>
+      <div class="flow-step derive">
+        <span class="tag">Backend</span>
+        <div class="body">Faz join de <code>empresa</code> + <code>estabelecimento</code> (matriz) + <code>simples</code> + <code>socios</code>, resolve códigos via cache em memória (<code>qualificacao</code>, <code>cnae</code>, <code>municipio</code>, <code>natureza</code>, <code>motivo</code>), separa sócios por <code>dt_ultima_atualizacao</code> contra <code>mes_atual</code>, monta histórico de qualificações.</div>
+      </div>
+      <div class="flow-step output">
+        <span class="tag">Resposta</span>
+        <div class="body">Devolve um único JSON com a estrutura completa — sem que o frontend faça nenhum lookup adicional. ~1 round-trip por tela de empresa.</div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span>
+      <div><strong>Princípio:</strong> tudo que é decodificação de código da RF acontece no <code>crud.py</code> com cache em memória das tabelas de domínio. O frontend recebe apenas strings legíveis. Isso é o que o seu README descreve em "Decisões do site 1.0" — manter.</div>
+    </div>
+  </section>
+
+  <!-- ── 02. ENDPOINTS ───────────────────────────────────────────── -->
+  <section class="section" id="ep">
+    <div class="section-num">02 · Endpoints necessários</div>
+    <h2 class="section-title">Quatro endpoints cobrem todas as telas do protótipo</h2>
+    <p class="section-sub">Três já existem no repo. O quarto (autocomplete) pode reutilizar o endpoint de busca existente com <code>limit=5</code>.</p>
+
+    <div class="endpoint">
+      <span class="verb">GET</span>
+      <span class="path">/api/v1/empresa/{cnpj}</span>
+      <span class="desc">Resultado da Empresa</span>
+    </div>
+    <pre class="code">{
+  <span class="c">// CNPJ aceito com ou sem máscara — backend normaliza para 14 dígitos.</span>
+  <span class="c">// Retorna 404 se não encontrado na base atual.</span>
+  <span class="c">// Estrutura completa documentada na seção 03 abaixo.</span>
+}</pre>
+
+    <div class="endpoint">
+      <span class="verb">GET</span>
+      <span class="path">/api/v1/empresa/busca?nome={termo}&skip=0&limit=20</span>
+      <span class="desc">Busca por texto</span>
+    </div>
+    <pre class="code"><span class="p">{</span>
+  <span class="f">"total"</span><span class="p">:</span> <span class="n">147</span><span class="p">,</span>
+  <span class="f">"items"</span><span class="p">:</span> <span class="p">[</span>
+    <span class="p">{</span>
+      <span class="f">"cnpj"</span><span class="p">:</span> <span class="s">"47.819.002/0001-70"</span><span class="p">,</span>
+      <span class="f">"razao_social"</span><span class="p">:</span> <span class="s">"Marambaia Indústria de Alimentos S.A."</span><span class="p">,</span>
+      <span class="f">"nome_fantasia"</span><span class="p">:</span> <span class="s">"Marambaia Foods"</span><span class="p">,</span>
+      <span class="f">"uf"</span><span class="p">:</span> <span class="s">"BA"</span><span class="p">,</span>
+      <span class="f">"municipio"</span><span class="p">:</span> <span class="s">"FEIRA DE SANTANA"</span><span class="p">,</span>
+      <span class="f">"cnae_principal"</span><span class="p">:</span> <span class="s">"Beneficiamento de arroz"</span><span class="p">,</span>
+      <span class="f">"situacao"</span><span class="p">:</span> <span class="s">"Ativa"</span>
+    <span class="p">}</span>
+  <span class="p">]</span>
+<span class="p">}</span></pre>
+
+    <div class="endpoint">
+      <span class="verb">GET</span>
+      <span class="path">/api/v1/socio/busca?cpf={6dig}&nome={termo}&skip=0&limit=20</span>
+      <span class="desc">Resultado do Sócio</span>
+    </div>
+    <pre class="code"><span class="c">// cpf = 6 dígitos visíveis (posições 4-9 do CPF sem formatação)</span>
+<span class="c">// nome = busca parcial case-insensitive</span>
+<span class="p">{</span>
+  <span class="f">"total"</span><span class="p">:</span> <span class="n">12</span><span class="p">,</span>
+  <span class="f">"items"</span><span class="p">:</span> <span class="p">[</span>
+    <span class="p">{</span>
+      <span class="f">"cnpj_basico"</span><span class="p">:</span> <span class="s">"47819002"</span><span class="p">,</span>
+      <span class="f">"razao_social"</span><span class="p">:</span> <span class="s">"Marambaia Indústria de Alimentos S.A."</span><span class="p">,</span>
+      <span class="f">"cpf_cnpj_socio"</span><span class="p">:</span> <span class="s">"***.418.204-**"</span><span class="p">,</span>
+      <span class="f">"nome_socio"</span><span class="p">:</span> <span class="s">"HELOISA DE ANDRADE QUEIROZ"</span><span class="p">,</span>
+      <span class="f">"qualificacao"</span><span class="p">:</span> <span class="s">"Presidente"</span><span class="p">,</span>
+      <span class="f">"data_entrada"</span><span class="p">:</span> <span class="s">"2014-03-12"</span><span class="p">,</span>
+      <span class="f">"is_ativo"</span><span class="p">:</span> <span class="k">true</span><span class="p">,</span>
+      <span class="f">"dt_ultima_atualizacao"</span><span class="p">:</span> <span class="s">"2026-04"</span>
+    <span class="p">}</span>
+  <span class="p">]</span>
+<span class="p">}</span></pre>
+
+    <div class="endpoint">
+      <span class="verb">GET</span>
+      <span class="path">/health</span>
+      <span class="desc">Métricas da base</span>
+    </div>
+    <pre class="code"><span class="p">{</span>
+  <span class="f">"status"</span><span class="p">:</span> <span class="s">"ok"</span><span class="p">,</span>
+  <span class="f">"mes_atual"</span><span class="p">:</span> <span class="s">"2026-04"</span><span class="p">,</span>          <span class="c">// tb_processamento_mensal mais recente CONCLUIDO</span>
+  <span class="f">"ultima_carga"</span><span class="p">:</span> <span class="s">"2026-05-08T03:14:00-03:00"</span><span class="p">,</span>
+  <span class="f">"total_empresas"</span><span class="p">:</span> <span class="n">67413209</span><span class="p">,</span>
+  <span class="f">"total_socios"</span><span class="p">:</span> <span class="n">29874516</span>
+<span class="p">}</span></pre>
+
+    <div class="callout">
+      <span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span>
+      <div><strong>O endpoint <code>/health</code> precisa expandir:</strong> hoje retorna só status. O protótipo usa <code>mes_atual</code>, <code>total_empresas</code> e <code>total_socios</code> em vários lugares (sidebar, página inicial, indicadores temporais). É uma query simples sobre <code>tb_processamento_mensal</code> + dois <code>SELECT COUNT(*)</code> que podem ser cacheados.</div>
+    </div>
+  </section>
+
+  <!-- ── 03. SHAPE ───────────────────────────────────────────────── -->
+  <section class="section" id="shape">
+    <div class="section-num">03 · Shape da resposta</div>
+    <h2 class="section-title">GET /api/v1/empresa/{cnpj} — estrutura completa</h2>
+    <p class="section-sub">Esta é a estrutura que <code>v2/mockdata.js</code> espera. Use como contrato. Campos opcionais marcados como <code>nullable</code>.</p>
+
+    <pre class="code standalone"><span class="p">{</span>
+  <span class="c">// ── Identificação cadastral ────────────────────────────────────</span>
+  <span class="f">"cnpj"</span><span class="p">:</span>            <span class="s">"47.819.002/0001-70"</span><span class="p">,</span>   <span class="c">// formatado</span>
+  <span class="f">"cnpj_raw"</span><span class="p">:</span>        <span class="s">"47819002000170"</span><span class="p">,</span>       <span class="c">// só dígitos</span>
+  <span class="f">"cnpj_basico"</span><span class="p">:</span>     <span class="s">"47819002"</span><span class="p">,</span>             <span class="c">// 8 dígitos, chave natural</span>
+  <span class="f">"razao_social"</span><span class="p">:</span>    <span class="s">"MARAMBAIA INDUSTRIA ..."</span><span class="p">,</span>
+  <span class="f">"nome_fantasia"</span><span class="p">:</span>   <span class="s">"MARAMBAIA FOODS"</span><span class="p">,</span>      <span class="c">// nullable</span>
+  <span class="f">"natureza_juridica"</span><span class="p">:</span> <span class="s">"205-4 — Sociedade Anônima Fechada"</span><span class="p">,</span>
+  <span class="f">"qualificacao_responsavel"</span><span class="p">:</span> <span class="s">"16 — Presidente"</span><span class="p">,</span>
+  <span class="f">"capital_social"</span><span class="p">:</span>  <span class="n">28500000.00</span><span class="p">,</span>            <span class="c">// número, em reais</span>
+  <span class="f">"porte"</span><span class="p">:</span>           <span class="s">"Demais"</span><span class="p">,</span>                <span class="c">// já traduzido (ver §07)</span>
+
+  <span class="c">// ── Estabelecimento matriz ─────────────────────────────────────</span>
+  <span class="f">"matriz"</span><span class="p">:</span>          <span class="k">true</span><span class="p">,</span>
+  <span class="f">"cnpj_ordem"</span><span class="p">:</span>      <span class="s">"0001"</span><span class="p">,</span>
+  <span class="f">"situacao"</span><span class="p">:</span>        <span class="s">"Ativa"</span><span class="p">,</span>                 <span class="c">// já traduzida (ver §07)</span>
+  <span class="f">"situacao_data"</span><span class="p">:</span>   <span class="s">"2014-03-12"</span><span class="p">,</span>            <span class="c">// ISO date</span>
+  <span class="f">"motivo_situacao"</span><span class="p">:</span> <span class="k">null</span><span class="p">,</span>                    <span class="c">// nullable, texto via tabela motivo</span>
+  <span class="f">"situacao_especial"</span><span class="p">:</span>      <span class="k">null</span><span class="p">,</span>              <span class="c">// texto livre da RF, nullable</span>
+  <span class="f">"situacao_especial_data"</span><span class="p">:</span> <span class="k">null</span><span class="p">,</span>
+  <span class="f">"data_abertura"</span><span class="p">:</span>   <span class="s">"2014-03-12"</span><span class="p">,</span>
+  <span class="f">"cnae_principal"</span><span class="p">:</span>  <span class="p">{</span> <span class="f">"codigo"</span><span class="p">:</span> <span class="s">"10.61-9-01"</span><span class="p">,</span> <span class="f">"descricao"</span><span class="p">:</span> <span class="s">"Beneficiamento de arroz"</span> <span class="p">},</span>
+  <span class="f">"cnae_secundarios"</span><span class="p">:</span> <span class="p">[</span>
+    <span class="p">{</span> <span class="f">"codigo"</span><span class="p">:</span> <span class="s">"10.62-7-00"</span><span class="p">,</span> <span class="f">"descricao"</span><span class="p">:</span> <span class="s">"Moagem de trigo..."</span> <span class="p">},</span>
+    <span class="c">// ...</span>
+  <span class="p">],</span>
+
+  <span class="f">"endereco"</span><span class="p">:</span> <span class="p">{</span>
+    <span class="f">"logradouro"</span><span class="p">:</span>  <span class="s">"RODOVIA BR 116, KM 212, S/N"</span><span class="p">,</span>
+    <span class="f">"complemento"</span><span class="p">:</span> <span class="s">"GALPAO 4, DISTRITO INDUSTRIAL"</span><span class="p">,</span>
+    <span class="f">"bairro"</span><span class="p">:</span>      <span class="s">"AEROPORTO"</span><span class="p">,</span>
+    <span class="f">"municipio"</span><span class="p">:</span>   <span class="s">"FEIRA DE SANTANA"</span><span class="p">,</span>     <span class="c">// já traduzido (tabela municipio)</span>
+    <span class="f">"uf"</span><span class="p">:</span>          <span class="s">"BA"</span><span class="p">,</span>
+    <span class="f">"cep"</span><span class="p">:</span>         <span class="s">"44052-000"</span><span class="p">,</span>
+    <span class="f">"pais"</span><span class="p">:</span>        <span class="s">"BRASIL"</span>
+  <span class="p">},</span>
+
+  <span class="f">"contato"</span><span class="p">:</span> <span class="p">{</span>
+    <span class="f">"telefone1"</span><span class="p">:</span> <span class="s">"(75) 3602-4900"</span><span class="p">,</span>
+    <span class="f">"telefone2"</span><span class="p">:</span> <span class="k">null</span><span class="p">,</span>
+    <span class="f">"email"</span><span class="p">:</span>     <span class="s">"contato@marambaiafoods.com.br"</span>
+  <span class="p">},</span>
+
+  <span class="f">"simples"</span><span class="p">:</span> <span class="p">{</span>
+    <span class="f">"opcao_simples"</span><span class="p">:</span>         <span class="k">false</span><span class="p">,</span>           <span class="c">// boolean (S=true / N=false / null)</span>
+    <span class="f">"data_opcao_simples"</span><span class="p">:</span>    <span class="k">null</span><span class="p">,</span>
+    <span class="f">"data_exclusao_simples"</span><span class="p">:</span> <span class="k">null</span><span class="p">,</span>
+    <span class="f">"opcao_mei"</span><span class="p">:</span>             <span class="k">false</span><span class="p">,</span>
+    <span class="f">"data_opcao_mei"</span><span class="p">:</span>        <span class="k">null</span><span class="p">,</span>
+    <span class="f">"data_exclusao_mei"</span><span class="p">:</span>     <span class="k">null</span>
+  <span class="p">},</span>
+
+  <span class="c">// ── Diferencial Pythagoras ─────────────────────────────────────</span>
+  <span class="f">"dt_primeira_carga"</span><span class="p">:</span>    <span class="s">"2023-03"</span><span class="p">,</span>           <span class="c">// YYYY-MM, do registro empresa</span>
+  <span class="f">"dt_ultima_atualizacao"</span><span class="p">:</span> <span class="s">"2026-04"</span><span class="p">,</span>
+  <span class="f">"ativo_na_base_atual"</span><span class="p">:</span>  <span class="k">true</span><span class="p">,</span>                <span class="c">// dt_ultima_atualizacao === mes_atual</span>
+  <span class="f">"has_filial_ativa"</span><span class="p">:</span>     <span class="k">false</span><span class="p">,</span>               <span class="c">// só relevante se situacao=Baixada (ver §08)</span>
+
+  <span class="c">// ── QSA com separação temporal — ver §05 e §06 ──────────────────</span>
+  <span class="f">"socios_ativos"</span><span class="p">:</span>   <span class="p">[ </span><span class="c">/* SocioWithHistory */</span><span class="p"> ],</span>
+  <span class="f">"socios_inativos"</span><span class="p">:</span> <span class="p">[ </span><span class="c">/* SocioWithHistory */</span><span class="p"> ],</span>
+
+  <span class="c">// ── Filiais (estabelecimentos com cnpj_ordem != "0001") ────────</span>
+  <span class="f">"filiais"</span><span class="p">:</span> <span class="p">[</span>
+    <span class="p">{</span>
+      <span class="f">"cnpj"</span><span class="p">:</span> <span class="s">"47.819.002/0002-51"</span><span class="p">,</span>
+      <span class="f">"cnpj_ordem"</span><span class="p">:</span> <span class="s">"0002"</span><span class="p">,</span>
+      <span class="f">"municipio"</span><span class="p">:</span> <span class="s">"SALVADOR"</span><span class="p">,</span> <span class="f">"uf"</span><span class="p">:</span> <span class="s">"BA"</span><span class="p">,</span>
+      <span class="f">"situacao"</span><span class="p">:</span> <span class="s">"Ativa"</span><span class="p">,</span>
+      <span class="f">"situacao_data"</span><span class="p">:</span> <span class="s">"2015-06-04"</span><span class="p">,</span>
+      <span class="f">"motivo_situacao"</span><span class="p">:</span> <span class="k">null</span><span class="p">,</span>
+      <span class="f">"data_abertura"</span><span class="p">:</span> <span class="s">"2015-06-04"</span><span class="p">,</span>
+      <span class="f">"dt_ultima_atualizacao"</span><span class="p">:</span> <span class="s">"2026-04"</span>
+    <span class="p">}</span>
+  <span class="p">]</span>
+<span class="p">}</span></pre>
+
+    <h3 style="font-family: var(--font-display); font-weight: 600; font-size: 18px; color: var(--navy-900); margin: 32px 0 12px; letter-spacing: -0.015em;">Tipo <code style="font-family: var(--font-mono); font-size: 14px; background: var(--surface); padding: 2px 6px; border-radius: 3px; border: 1px solid var(--line); color: var(--navy-900);">SocioWithHistory</code> (cada item de <code style="font-family: var(--font-mono); font-size: 14px; background: var(--surface); padding: 2px 6px; border-radius: 3px; border: 1px solid var(--line);">socios_ativos</code> / <code style="font-family: var(--font-mono); font-size: 14px; background: var(--surface); padding: 2px 6px; border-radius: 3px; border: 1px solid var(--line);">socios_inativos</code>)</h3>
+
+    <pre class="code standalone"><span class="p">{</span>
+  <span class="f">"identificador_socio"</span><span class="p">:</span> <span class="s">"PF"</span><span class="p">,</span>                  <span class="c">// "PF" | "PJ" | "Estrangeiro"</span>
+  <span class="f">"cpf_cnpj_socio"</span><span class="p">:</span>      <span class="s">"***.418.204-**"</span><span class="p">,</span>     <span class="c">// mascarado pra PF, completo pra PJ, null pra Estrangeiro</span>
+  <span class="f">"nome_socio"</span><span class="p">:</span>          <span class="s">"HELOISA DE ANDRADE QUEIROZ"</span><span class="p">,</span>
+  <span class="f">"data_entrada"</span><span class="p">:</span>        <span class="s">"2014-03-12"</span><span class="p">,</span>             <span class="c">// dt_dataentradasociedade do registro mais antigo</span>
+  <span class="f">"faixa_etaria"</span><span class="p">:</span>        <span class="s">"51 a 60 anos"</span><span class="p">,</span>           <span class="c">// nullable, só PF (ver §07)</span>
+  <span class="f">"pais_origem"</span><span class="p">:</span>         <span class="k">null</span><span class="p">,</span>                      <span class="c">// só para Estrangeiro, traduzido via tabela paises</span>
+  <span class="f">"dt_primeira_carga"</span><span class="p">:</span>   <span class="s">"2023-03"</span><span class="p">,</span>                <span class="c">// MIN sobre todos os registros desta pessoa nesta empresa</span>
+  <span class="f">"dt_ultima_atualizacao"</span><span class="p">:</span> <span class="s">"2026-04"</span><span class="p">,</span>              <span class="c">// MAX sobre todos os registros</span>
+
+  <span class="f">"qualificacao_atual"</span><span class="p">:</span> <span class="p">{</span>                          <span class="c">// registro com dt_ultima_atualizacao = mes_atual</span>
+    <span class="f">"codigo"</span><span class="p">:</span>    <span class="s">"16"</span><span class="p">,</span>
+    <span class="f">"descricao"</span><span class="p">:</span> <span class="s">"Presidente"</span><span class="p">,</span>
+    <span class="f">"desde"</span><span class="p">:</span>     <span class="s">"2014-03-12"</span>                  <span class="c">// dt_dataentradasociedade deste registro</span>
+  <span class="p">},</span>
+  <span class="f">"qualificacoes_anteriores"</span><span class="p">:</span> <span class="p">[</span>                    <span class="c">// outros registros, ordenados por de DESC</span>
+    <span class="p">{</span>
+      <span class="f">"codigo"</span><span class="p">:</span>    <span class="s">"22"</span><span class="p">,</span>
+      <span class="f">"descricao"</span><span class="p">:</span> <span class="s">"Sócio-Administrador"</span><span class="p">,</span>
+      <span class="f">"de"</span><span class="p">:</span>        <span class="s">"2018-07-01"</span><span class="p">,</span>                 <span class="c">// data_entrada deste registro</span>
+      <span class="f">"ate"</span><span class="p">:</span>       <span class="s">"2026-04-30"</span>                  <span class="c">// fim do mês de dt_ultima_atualizacao</span>
+    <span class="p">}</span>
+  <span class="p">]</span>
+<span class="p">}</span></pre>
+  </section>
+
+  <!-- ── 04. MAPPING ─────────────────────────────────────────────── -->
+  <section class="section" id="mapping">
+    <div class="section-num">04 · Mapeamento campo-a-campo</div>
+    <h2 class="section-title">Para cada campo do JSON, de onde sai no schema</h2>
+    <p class="section-sub">O backend já tem os models corretos (<code>backend/models.py</code>). Esta tabela é o guia para o <code>crud.py</code> montar a resposta.</p>
+
+    <table class="mapping">
+      <thead>
+        <tr>
+          <th>Campo da resposta</th>
+          <th>Origem no schema</th>
+          <th>Tratamento</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="field">razao_social</td>
+          <td class="source">empresa.nm_razaosocial</td>
+          <td class="note">Direto.</td>
+        </tr>
+        <tr>
+          <td class="field">natureza_juridica</td>
+          <td class="source">empresa.cd_naturezajuridica</td>
+          <td class="note">Join com tabela <code style="font-family: var(--font-mono); font-size: 11px;">natureza</code> (cache em memória). Formato <code style="font-family: var(--font-mono); font-size: 11px;">"205-4 — Sociedade Anônima Fechada"</code>.</td>
+        </tr>
+        <tr>
+          <td class="field">qualificacao_responsavel</td>
+          <td class="source">empresa.cd_qualificacaoresponsavel</td>
+          <td class="note">Join com <code style="font-family: var(--font-mono); font-size: 11px;">qualificacao</code> (cache). Mesmo formato <code style="font-family: var(--font-mono); font-size: 11px;">"código — descrição"</code>.</td>
+        </tr>
+        <tr>
+          <td class="field">capital_social</td>
+          <td class="source">empresa.vl_capitalsocial</td>
+          <td class="note">Numérico em reais. Frontend formata para BRL.</td>
+        </tr>
+        <tr>
+          <td class="field">porte</td>
+          <td class="source">empresa.cd_porteempresa</td>
+          <td class="note">Mapa fixo no backend: 00→"Não informado", 01→"Micro Empresa", 03→"EPP", 05→"Demais".</td>
+        </tr>
+        <tr>
+          <td class="field">situacao</td>
+          <td class="source">estabelecimento.cd_situacaocadastral</td>
+          <td class="note">Mapa fixo: 01→"Nula", 02→"Ativa", 03→"Suspensa", 04→"Inapta", 08→"Baixada". <strong>Sempre da matriz</strong> (cnpj_ordem='0001').</td>
+        </tr>
+        <tr>
+          <td class="field">motivo_situacao</td>
+          <td class="source">estabelecimento.cd_motivosituacaocadastral</td>
+          <td class="note">Join com <code style="font-family: var(--font-mono); font-size: 11px;">motivo</code> (cache). <code>null</code> se situação = Ativa.</td>
+        </tr>
+        <tr>
+          <td class="field">situacao_especial / data</td>
+          <td class="source">estabelecimento.nm_situacaoespecial<br>estabelecimento.dt_datasituacaoespecial</td>
+          <td class="note">Texto livre. Trim. <code>null</code> se vazio. <strong>Sempre da matriz.</strong></td>
+        </tr>
+        <tr>
+          <td class="field">cnae_principal</td>
+          <td class="source">estabelecimento.cd_cnaefiscalprincipal</td>
+          <td class="note">Join com <code style="font-family: var(--font-mono); font-size: 11px;">cnae</code> (cache). Objeto <code>{codigo, descricao}</code>.</td>
+        </tr>
+        <tr>
+          <td class="field">cnae_secundarios</td>
+          <td class="source">estabelecimento.cd_cnaesecundario</td>
+          <td class="note">String CSV. <code>split(',')</code> + lookup cada um → array de <code>{codigo, descricao}</code>.</td>
+        </tr>
+        <tr>
+          <td class="field">endereco.municipio</td>
+          <td class="source">estabelecimento.cd_municipio</td>
+          <td class="note">Join com <code style="font-family: var(--font-mono); font-size: 11px;">municipio</code> (cache). UF vem direto de <code>estabelecimento.uf</code>.</td>
+        </tr>
+        <tr>
+          <td class="field">simples.opcao_simples</td>
+          <td class="source">simples.opcao_pelo_simples</td>
+          <td class="note">Converte 'S'/'N'/null → true/false/null.</td>
+        </tr>
+        <tr>
+          <td class="field">dt_primeira_carga</td>
+          <td class="source">empresa.dt_primeira_carga</td>
+          <td class="note">Já no formato YYYY-MM. Direto.</td>
+        </tr>
+        <tr>
+          <td class="field">dt_ultima_atualizacao</td>
+          <td class="source">empresa.dt_ultima_atualizacao</td>
+          <td class="note">Direto.</td>
+        </tr>
+        <tr>
+          <td class="field">ativo_na_base_atual</td>
+          <td class="source">derivado</td>
+          <td class="note"><code style="font-family: var(--font-mono); font-size: 11px;">empresa.dt_ultima_atualizacao == mes_atual</code></td>
+        </tr>
+        <tr>
+          <td class="field">has_filial_ativa</td>
+          <td class="source">derivado</td>
+          <td class="note">Só preencher se <code>situacao = "Baixada"</code>. Query: <code>EXISTS</code> filial mesma <code>cd_cnpjbasico</code> com <code>cd_situacaocadastral = 02</code>.</td>
+        </tr>
+        <tr>
+          <td class="field">socios_ativos</td>
+          <td class="source">socios</td>
+          <td class="note">Ver §05. Sócios com <code>dt_ultima_atualizacao = mes_atual</code>.</td>
+        </tr>
+        <tr>
+          <td class="field">socios_inativos</td>
+          <td class="source">socios</td>
+          <td class="note">Ver §05. Sócios com <code>dt_ultima_atualizacao &lt; mes_atual</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── 05. ATIVOS × EX-SÓCIOS ──────────────────────────────────── -->
+  <section class="section" id="qsa">
+    <div class="section-num">05 · Lógica</div>
+    <h2 class="section-title">Como separar Sócios Ativos de Ex-Sócios</h2>
+    <p class="section-sub">Esta é a feature mais importante do produto. O <code>crud.py</code> já tem boa parte da lógica (sócios_ativos/socios_inativos). A diferença na v2 é que cada item carrega o histórico de qualificações dentro.</p>
+
+    <h3 style="font-family: var(--font-display); font-weight: 600; font-size: 17px; color: var(--navy-900); margin: 8px 0 14px; letter-spacing: -0.015em;">Algoritmo</h3>
+
+    <pre class="code standalone"><span class="c"># 1. Carrega todos os registros de socios do CNPJ básico</span>
+rows = db.query(Socio).filter(Socio.cd_cnpjbasico == cnpj_basico).all()
+
+<span class="c"># 2. Agrupa por (cpf_cnpj_socio, identificador_socio)</span>
+<span class="c">#    — uma "pessoa" pode ter múltiplos registros se mudou de qualificação</span>
+grouped = defaultdict(list)
+for r in rows:
+    key = (r.cd_cpfcnpjsocio or r.nm_socio, r.cd_identificadorsocio)
+    grouped[key].append(r)
+
+<span class="c"># 3. Para cada pessoa, monta SocioWithHistory</span>
+ativos, inativos = [], []
+for key, registros in grouped.items():
+    <span class="c"># Sort: mais recente primeiro (por dt_ultima_atualizacao DESC, dt_primeira_carga DESC)</span>
+    registros.sort(key=<span class="k">lambda</span> r: (r.dt_ultima_atualizacao, r.dt_primeira_carga), reverse=<span class="k">True</span>)
+
+    most_recent = registros[<span class="n">0</span>]
+    is_active = most_recent.dt_ultima_atualizacao == mes_atual
+
+    socio = {
+        <span class="s">"identificador_socio"</span>: TIPO_SOCIO_MAP[most_recent.cd_identificadorsocio],
+        <span class="s">"cpf_cnpj_socio"</span>: most_recent.cd_cpfcnpjsocio,
+        <span class="s">"nome_socio"</span>: most_recent.nm_socio,
+        <span class="s">"data_entrada"</span>: <span class="f">min</span>(r.dt_dataentradasociedade <span class="k">for</span> r <span class="k">in</span> registros),
+        <span class="s">"faixa_etaria"</span>: FAIXA_MAP.get(most_recent.cd_faixaetaria),
+        <span class="s">"dt_primeira_carga"</span>: <span class="f">min</span>(r.dt_primeira_carga <span class="k">for</span> r <span class="k">in</span> registros),
+        <span class="s">"dt_ultima_atualizacao"</span>: most_recent.dt_ultima_atualizacao,
+        <span class="s">"qualificacao_atual"</span>: {
+            <span class="s">"codigo"</span>: most_recent.cd_qualificacaosocio,
+            <span class="s">"descricao"</span>: qualificacao_cache[most_recent.cd_qualificacaosocio],
+            <span class="s">"desde"</span>: most_recent.dt_dataentradasociedade,
+        },
+        <span class="s">"qualificacoes_anteriores"</span>: [
+            {
+                <span class="s">"codigo"</span>: r.cd_qualificacaosocio,
+                <span class="s">"descricao"</span>: qualificacao_cache[r.cd_qualificacaosocio],
+                <span class="s">"de"</span>: r.dt_dataentradasociedade,
+                <span class="s">"ate"</span>: end_of_month(r.dt_ultima_atualizacao),
+            }
+            <span class="k">for</span> r <span class="k">in</span> registros[<span class="n">1</span>:]
+        ]
+    }
+
+    (ativos <span class="k">if</span> is_active <span class="k">else</span> inativos).append(socio)</pre>
+
+    <div class="callout">
+      <span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+      <div><strong>Chave de agrupamento:</strong> <code>(cd_cpfcnpjsocio, cd_identificadorsocio)</code> — a mesma chave usada para detectar duplicatas. Para sócios Estrangeiros, <code>cd_cpfcnpjsocio</code> é vazio, então usa nome como fallback (pode gerar falsos positivos em homônimos, mas é o melhor possível com os dados da RF).</div>
+    </div>
+  </section>
+
+  <!-- ── 06. HISTÓRICO DE QUALIFICAÇÕES ──────────────────────────── -->
+  <section class="section" id="qual">
+    <div class="section-num">06 · Histórico de qualificações</div>
+    <h2 class="section-title">Por que múltiplos registros geram a linha do tempo</h2>
+    <p class="section-sub">A chave natural de sócios inclui <code>cd_qualificacaosocio</code>. Mudança de qualificação = saída do registro antigo + entrada do novo. Cada par conta um capítulo da história da pessoa na empresa.</p>
+
+    <p style="font-size: 13.5px; line-height: 1.6; color: var(--ink-700); margin: 0 0 20px;"><strong>Exemplo do mock:</strong> Otávio Ramalho Sampaio aparece três vezes no banco para a Marambaia. O backend deve consolidar em um único item de <code>socios_ativos</code>:</p>
+
+    <table class="mapping">
+      <thead>
+        <tr>
+          <th>Registro no banco</th>
+          <th>dt_primeira_carga</th>
+          <th>dt_ultima_atualizacao</th>
+          <th>Posição</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="field">qualif 49 (Sócio-Adm)</td>
+          <td class="source">2023-03</td>
+          <td class="source">2020-12</td>
+          <td class="note">qualificacoes_anteriores[1]</td>
+        </tr>
+        <tr>
+          <td class="field">qualif 22 (Sócio-Adm v2)</td>
+          <td class="source">2023-03</td>
+          <td class="source">2026-04</td>
+          <td class="note">qualificacoes_anteriores[0]</td>
+        </tr>
+        <tr>
+          <td class="field">qualif 05 (Administrador)</td>
+          <td class="source">2026-05</td>
+          <td class="source">2026-05 (= mes_atual)</td>
+          <td class="note"><strong>qualificacao_atual</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p style="font-size: 13.5px; line-height: 1.6; color: var(--ink-700); margin: 24px 0 0;">A UI renderiza isso como linha do tempo expandível ao clicar no sócio. O badge <strong>"mudou"</strong> aparece quando <code>qualificacao_atual.desde</code> está dentro dos últimos 12 meses E <code>qualificacoes_anteriores.length &gt; 0</code>.</p>
+  </section>
+
+  <!-- ── 07. CÓDIGOS ─────────────────────────────────────────────── -->
+  <section class="section" id="codes">
+    <div class="section-num">07 · Tradução de códigos</div>
+    <h2 class="section-title">Mapas fixos — implementar em <code style="font-size: 24px;">backend/utils/codigos.py</code></h2>
+    <p class="section-sub">São constantes — não precisam estar no banco. Documentadas no README do projeto e no metadado oficial da RF.</p>
+
+    <pre class="code standalone"><span class="c"># backend/utils/codigos.py</span>
+
+PORTE_MAP = {
+    <span class="s">"00"</span>: <span class="s">"Não informado"</span>,
+    <span class="s">"01"</span>: <span class="s">"Micro Empresa"</span>,
+    <span class="s">"03"</span>: <span class="s">"EPP"</span>,
+    <span class="s">"05"</span>: <span class="s">"Demais"</span>,
+}
+
+SITUACAO_MAP = {
+    <span class="s">"01"</span>: <span class="s">"Nula"</span>,
+    <span class="s">"02"</span>: <span class="s">"Ativa"</span>,
+    <span class="s">"03"</span>: <span class="s">"Suspensa"</span>,
+    <span class="s">"04"</span>: <span class="s">"Inapta"</span>,
+    <span class="s">"08"</span>: <span class="s">"Baixada"</span>,
+}
+
+TIPO_SOCIO_MAP = {
+    <span class="s">"1"</span>: <span class="s">"PJ"</span>,
+    <span class="s">"2"</span>: <span class="s">"PF"</span>,
+    <span class="s">"3"</span>: <span class="s">"Estrangeiro"</span>,
+}
+
+FAIXA_ETARIA_MAP = {
+    <span class="s">"0"</span>: <span class="k">None</span>,                  <span class="c"># não se aplica</span>
+    <span class="s">"1"</span>: <span class="s">"0 a 12 anos"</span>,
+    <span class="s">"2"</span>: <span class="s">"13 a 20 anos"</span>,
+    <span class="s">"3"</span>: <span class="s">"21 a 30 anos"</span>,
+    <span class="s">"4"</span>: <span class="s">"31 a 40 anos"</span>,
+    <span class="s">"5"</span>: <span class="s">"41 a 50 anos"</span>,
+    <span class="s">"6"</span>: <span class="s">"51 a 60 anos"</span>,
+    <span class="s">"7"</span>: <span class="s">"61 a 70 anos"</span>,
+    <span class="s">"8"</span>: <span class="s">"71 a 80 anos"</span>,
+    <span class="s">"9"</span>: <span class="s">"Maior de 80 anos"</span>,
+}
+
+SIMPLES_MAP = {<span class="s">"S"</span>: <span class="k">True</span>, <span class="s">"N"</span>: <span class="k">False</span>, <span class="k">None</span>: <span class="k">None</span>, <span class="s">""</span>: <span class="k">None</span>}
+
+MATRIZ_FILIAL_MAP = {<span class="s">"1"</span>: <span class="s">"Matriz"</span>, <span class="s">"2"</span>: <span class="s">"Filial"</span>}</pre>
+  </section>
+
+  <!-- ── 08. EDGE CASES ──────────────────────────────────────────── -->
+  <section class="section" id="edge">
+    <div class="section-num">08 · Edge cases</div>
+    <h2 class="section-title">Três situações que o protótipo trata e o backend precisa suportar</h2>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">E.01</div>
+        <div class="step-body">
+          <h4>Situação especial preenchida</h4>
+          <p>Quando <code>estabelecimento.nm_situacaoespecial</code> (da matriz) é não-vazio, o protótipo mostra um banner vermelho no topo do header. Backend só precisa entregar <code>situacao_especial</code> + <code>situacao_especial_data</code> não nulos. Exemplos: <span class="ref">EM RECUPERACAO JUDICIAL</span> · <span class="ref">EM LIQUIDACAO</span> · <span class="ref">EM FALENCIA</span>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">E.02</div>
+        <div class="step-body">
+          <h4>Matriz baixada com filial ativa</h4>
+          <p>Caso documentado no README (6.648 casos na base de abr/2026). Quando <code>situacao = "Baixada"</code> <strong>e</strong> existe pelo menos uma filial mesma <code>cd_cnpjbasico</code> com <code>cd_situacaocadastral = 02</code>, retornar <code>has_filial_ativa: true</code>. O frontend mostra banner amarelo de aviso.</p>
+          <p style="margin-top: 8px;"><strong>Query:</strong></p>
+          <pre class="code standalone" style="margin-top: 8px;"><span class="k">SELECT</span> <span class="f">EXISTS</span>(
+  <span class="k">SELECT</span> <span class="n">1</span> <span class="k">FROM</span> estabelecimento
+  <span class="k">WHERE</span> cd_cnpjbasico = :basico
+    <span class="k">AND</span> cd_cnpjordem != <span class="s">'0001'</span>
+    <span class="k">AND</span> cd_situacaocadastral = <span class="s">'02'</span>
+)</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">E.03</div>
+        <div class="step-body">
+          <h4>Empresa fora da base atual</h4>
+          <p>Quando <code>empresa.dt_ultima_atualizacao &lt; mes_atual</code> — significa que a empresa saiu da base oficial em algum mês passado. O frontend marca <code>ativo_na_base_atual: false</code> no card temporal lateral. <strong>Não retornar 404</strong> — a empresa continua existindo no histórico do Pythagoras (esse é um dos diferenciais).</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 09. BUSCA ───────────────────────────────────────────────── -->
+  <section class="section" id="search">
+    <div class="section-num">09 · Performance da busca por texto</div>
+    <h2 class="section-title">Já documentado no README — só reiterar</h2>
+    <p class="section-sub">Os endpoints <code>/empresa/busca?nome=</code> e <code>/socio/busca?nome=</code> dependem de índice trigram. O autocomplete do protótipo (4 sugestões) <strong>vai estourar latência</strong> se o índice não estiver criado.</p>
+
+    <div class="flow">
+      <div class="flow-step input">
+        <span class="tag">SQLite dev</span>
+        <div class="body">Rodar uma vez: <code>py -3.12 backend/criar_indices.py</code> — cria <code>fts_empresa</code> e <code>fts_socio</code> com tokenizer trigram. Tempo: 30-60 min. Disco: +20-30 GB. Sem esse passo, autocomplete leva minutos.</div>
+      </div>
+      <div class="flow-step input">
+        <span class="tag">PostgreSQL</span>
+        <div class="body">Ativar extensão + GIN: <code>CREATE EXTENSION pg_trgm; CREATE INDEX idx_empresa_razao_trgm ON empresa USING GIN(nm_razaosocial gin_trgm_ops);</code> — feito uma vez. ILIKE usa o índice automaticamente.</div>
+      </div>
+      <div class="flow-step output">
+        <span class="tag">Crud</span>
+        <div class="body">A função <code>is_postgres()</code> no <code>database.py</code> já decide a estratégia em runtime — não há mudança de código. O autocomplete do frontend bate em <code>/empresa/busca?nome=X&limit=5</code> a partir de 3 caracteres digitados.</div>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></svg></span>
+      <div><strong>Detalhe importante:</strong> o autocomplete deve fazer <strong>debounce de 200-300ms</strong> no frontend antes de chamar a API. Sem isso, cada tecla dispara uma query. Isso é só ajuste no JS — não precisa mudar o endpoint.</div>
+    </div>
+  </section>
+
+  <!-- ── 10. PRÓXIMOS PASSOS ─────────────────────────────────────── -->
+  <section class="section" id="steps">
+    <div class="section-num">10 · Implementação</div>
+    <h2 class="section-title">Ordem prática para integrar o backend ao protótipo v2</h2>
+    <p class="section-sub">Cada passo é entregável independente. Faça nessa ordem.</p>
+
+    <div class="roadmap">
+      <div class="road-row">
+        <div class="road-step">PASSO 1</div>
+        <div class="road-name">
+          Adaptar schema da resposta de <code>GET /api/v1/empresa/{cnpj}</code>
+          <span class="sub">Adicionar <code>dt_primeira_carga</code>, <code>dt_ultima_atualizacao</code>, <code>ativo_na_base_atual</code>, <code>has_filial_ativa</code>, <code>situacao_especial</code> ao Pydantic schema. Atualizar <code>crud.py</code> para preencher.</span>
+        </div>
+        <div class="road-effort">≈ 1 sessão</div>
+      </div>
+      <div class="road-row">
+        <div class="road-step">PASSO 2</div>
+        <div class="road-name">
+          Reformatar QSA com <code>qualificacoes_anteriores</code>
+          <span class="sub">No <code>crud.py</code>, ao montar socios_ativos e socios_inativos, aplicar o agrupamento da §05. Adicionar a estrutura <code>qualificacao_atual / qualificacoes_anteriores</code> em cada item.</span>
+        </div>
+        <div class="road-effort">≈ 2 sessões</div>
+      </div>
+      <div class="road-row">
+        <div class="road-step">PASSO 3</div>
+        <div class="road-name">
+          Expandir <code>GET /health</code>
+          <span class="sub">Retornar <code>mes_atual</code>, <code>total_empresas</code>, <code>total_socios</code>, <code>ultima_carga</code>. Cachear (TTL 1h) — atualiza só após processamento mensal.</span>
+        </div>
+        <div class="road-effort">≈ 1 hora</div>
+      </div>
+      <div class="road-row">
+        <div class="road-step">PASSO 4</div>
+        <div class="road-name">
+          Portar o protótipo v2 para o repo
+          <span class="sub">Copiar tokens CSS, componentes JSX (<code>v2/app.jsx</code>, <code>v2/components.jsx</code>) para <code>frontend/src/</code>. Substituir <code>MOCK_*</code> por chamadas a <code>api.js</code>. Manter os JSX existentes (<code>BuscaEmpresa</code>, <code>ResultadoEmpresa</code>) — só recriar com a nova UI.</span>
+        </div>
+        <div class="road-effort">≈ 2-3 sessões</div>
+      </div>
+      <div class="road-row">
+        <div class="road-step">PASSO 5</div>
+        <div class="road-name">
+          Atualizar <code>ResultadoSocio.jsx</code> com mesma lógica temporal
+          <span class="sub">Adicionar separação "Empresas atuais / Empresas passadas" usando <code>is_ativo</code> que já vem do <code>SocioListItem</code>.</span>
+        </div>
+        <div class="road-effort">≈ 1-2 sessões</div>
+      </div>
+      <div class="road-row">
+        <div class="road-step">PASSO 6</div>
+        <div class="road-name">
+          QA com dados reais
+          <span class="sub">Testar com 5-10 CNPJs reais: empresa normal, em Recuperação Judicial, baixada, com sócios que mudaram qualificação, com sócio Estrangeiro. Calibrar UI conforme casos aparecerem.</span>
+        </div>
+        <div class="road-effort">≈ 1 sessão</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CLOSING ─────────────────────────────────────────────────── -->
+  <section class="closing">
+    <div class="closing-eyebrow">Próximo</div>
+    <h2>Backend pronto, frontend porta. Daí decidimos os próximos refinamentos.</h2>
+    <p>Implementando esta direção, o Pythagoras vira a primeira ferramenta brasileira que mostra publicamente o <em>tempo</em> embutido no cadastro da RFB — e abre caminho natural pra rede de sócios (v3). Manda dúvida em qualquer ponto que eu detalho mais.</p>
+    <div class="closing-actions">
+      <a href="../Pythagoras v2.html" class="btn-primary">Abrir protótipo v2 →</a>
+      <a href="Direção v2.html" class="btn-ghost">Revisar direção</a>
+    </div>
+  </section>
+
+</article>
+</body>
+</html>

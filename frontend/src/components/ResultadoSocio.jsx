@@ -215,8 +215,8 @@ export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, o
       setLoading(true);
       setErro(null);
       try {
-        // Prefer nome (exact DB match) over masked CPF (too few digits → false matches)
-        const res = await buscarPerfilSocio(nome ? null : (cpf || null), nome || null);
+        // Chave forte: envia nome+cpf juntos para o backend filtrar com precisão
+        const res = await buscarPerfilSocio(cpf || null, nome || null);
         if (cancelled) return;
         if (!res) { setErro("Perfil não encontrado."); return; }
         setPerfil(res);
@@ -242,7 +242,7 @@ export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, o
       : "—";
 
   return (
-    <main className="flex-1 md:ml-64 flex flex-col min-h-screen bg-background">
+    <main className="flex-1 md:ml-52 flex flex-col min-h-screen bg-background">
       {/* Header mobile */}
       <header className="md:hidden sticky top-0 z-50 flex items-center justify-between px-4 h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <button onClick={onVoltar} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg">

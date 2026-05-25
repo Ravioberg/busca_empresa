@@ -108,6 +108,16 @@ export async function buscarSocioPorNome(nome, skip = 0, limit = 20, knownTotal 
   }
 }
 
+export async function buscarEmpresaRede(cnpj) {
+  const cnpjLimpo = cnpj.replace(/\D/g, "");
+  const key = `rede:${cnpjLimpo}`;
+  const cached = _cacheGet(key);
+  if (cached) return cached;
+  const data = await _get(`/api/v1/empresa/${cnpjLimpo}/rede`, null);
+  if (data !== null) _cacheSet(key, data);
+  return data;
+}
+
 export async function buscarSocioPorCpf(cpf, skip = 0, limit = 20, knownTotal = 0) {
   const cpfLimpo = cpf.replace(/\D/g, "");
   const key = `sc:${cpfLimpo}:${skip}:${limit}`;

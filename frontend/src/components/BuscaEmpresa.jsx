@@ -270,14 +270,19 @@ export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "#0085ca"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,133,202,0.1)"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "0 1px 4px rgba(15,23,42,0.04)"; }}
                 >
-                  <div className="flex flex-col min-w-0">
-                    <div className="flex items-baseline gap-2 flex-wrap">
+                  <div className="flex flex-col min-w-0 gap-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[14px] font-semibold" style={{ color: "#0f172a" }}>
                         {e.razao_social}
                       </span>
                       <StatusChip status={e.situacao_cadastral} />
+                      {e.situacao_especial && (
+                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border" style={{ background: "#fff7ed", color: "#c2410c", borderColor: "#fed7aa" }}>
+                          {e.situacao_especial}
+                        </span>
+                      )}
                     </div>
-                    <span className="text-[13px] mt-0.5" style={{ color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>
+                    <span className="text-[13px]" style={{ color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>
                       {e.cnpj_completo_formatado || e.cnpj_basico}
                       {e.nome_fantasia ? <span style={{ fontFamily: "inherit" }}> · {e.nome_fantasia}</span> : ""}
                       {e.municipio_descricao && e.uf ? ` · ${e.municipio_descricao}, ${e.uf}` : ""}

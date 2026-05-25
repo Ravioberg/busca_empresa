@@ -129,6 +129,19 @@ def _normalizar(texto: str) -> str:
     return unicodedata.normalize("NFD", texto).encode("ascii", "ignore").decode("ascii").upper()
 
 
+def _strip_situacao_especial(razao_social: str | None, situacao_especial: str | None) -> str | None:
+    if not razao_social or not situacao_especial:
+        return razao_social
+    sit = situacao_especial.strip().upper()
+    first_word = sit.split()[0] if sit.split() else sit
+    rs = razao_social.strip()
+    # Tenta do mais específico para o mais genérico
+    for suffix in (f" EM {sit}", f" {sit}", f" EM {first_word}", f" {first_word}"):
+        if rs.upper().endswith(suffix):
+            return rs[:-len(suffix)].strip()
+    return rs
+
+
 def _build_fts_match(nome_norm: str) -> str | None:
     """Constrói query FTS5: cada palavra >= 3 chars como AND implícito.
     Retorna None se nenhuma palavra atende ao mínimo do tokenizador trigram."""
@@ -275,7 +288,7 @@ def get_empresa_by_cnpj(db: Session, cnpj: str) -> dict | None:
         "cnpj_basico":                       cnpj_basico,
         "cnpj_completo":                     cnpj_completo,
         "cnpj_completo_formatado":           cnpj_formatado,
-        "razao_social":                      empresa.nm_razaosocial if empresa else None,
+        "razao_social":                      _strip_situacao_especial(empresa.nm_razaosocial if empresa else None, estab.nm_situacaoespecial or None),
         "nome_fantasia":                     estab.nm_nomefantasia or None,
         "natureza_juridica_codigo":          cd_nat,
         "natureza_juridica_descricao":       _cache["natureza"].get(cd_nat),
@@ -337,6 +350,79 @@ def get_empresa_by_cnpj(db: Session, cnpj: str) -> dict | None:
     }
 
 
+# ── Rede societária da empresa ────────────────────────────────────────────────
+
+def get_empresa_rede(db: Session, cnpj: str) -> dict | None:
+    _load_cache(db)
+    mes_atual = _get_mes_atual(db)
+
+    cnpj_clean = re.sub(r"\D", "", cnpj)
+    if len(cnpj_clean) < 8:
+        return None
+    cnpj_basico = cnpj_clean[:8]
+
+    empresa = db.query(Empresa).filter(Empresa.cd_cnpjbasico == cnpj_basico).first()
+    nome_raiz = (empresa.nm_razaosocial if empresa else None) or cnpj_basico
+
+    rows = db.execute(text("""
+        SELECT
+            s1.nm_nomesociorazaosocial  AS socio_nome,
+            s1.cd_cpfcnpjsocio          AS socio_cpf,
+            s1.cd_qualificacaosocio     AS socio_qual,
+            s2.cd_cnpjbasico            AS outra_cnpj,
+            e2.nm_razaosocial           AS outra_nome,
+            est2.cd_situacaocadastral   AS outra_situacao
+        FROM socio s1
+        LEFT JOIN socio s2
+            ON  s2.cd_cpfcnpjsocio      = s1.cd_cpfcnpjsocio
+            AND s2.cd_cnpjbasico        != :basico
+            AND s2.dt_ultimaatualizacao  = :mes
+        LEFT JOIN empresa e2    ON e2.cd_cnpjbasico  = s2.cd_cnpjbasico
+        LEFT JOIN estabelecimento est2
+            ON  est2.cd_cnpjbasico = s2.cd_cnpjbasico
+            AND est2.cd_cnpjordem   = '0001'
+        WHERE s1.cd_cnpjbasico       = :basico
+          AND s1.dt_ultimaatualizacao = :mes
+          AND s1.cd_cpfcnpjsocio IS NOT NULL
+          AND s1.cd_cpfcnpjsocio != ''
+        ORDER BY s1.nm_nomesociorazaosocial, e2.nm_razaosocial
+        LIMIT 3000
+    """), {"basico": cnpj_basico, "mes": mes_atual}).fetchall()
+
+    socios_map: dict[str, dict] = {}
+    for row in rows:
+        cpf  = row[1] or ""
+        nome = row[0] or "—"
+        qual = row[2]
+        if cpf not in socios_map:
+            socios_map[cpf] = {"nome": nome, "qual": qual, "empresas": {}}
+        outra_cnpj = row[3]
+        if outra_cnpj and outra_cnpj not in socios_map[cpf]["empresas"]:
+            socios_map[cpf]["empresas"][outra_cnpj] = {
+                "nome":     row[4] or outra_cnpj,
+                "situacao": SITUACAO.get(row[5], row[5]) if row[5] else "—",
+            }
+
+    socios_list = sorted(
+        socios_map.values(),
+        key=lambda s: (QUALIFICACAO_RANK.get(s["qual"], 99), s["nome"])
+    )
+
+    children = []
+    for s in socios_list[:50]:
+        emp_children = [
+            {"name": e["nome"], "value": e["situacao"]}
+            for e in list(s["empresas"].values())[:20]
+        ]
+        children.append({
+            "name":     s["nome"],
+            "value":    _qual_desc(s["qual"]) or "Sócio",
+            "children": emp_children,
+        })
+
+    return {"name": nome_raiz, "value": "root", "children": children}
+
+
 # ── Busca empresa por nome ────────────────────────────────────────────────────
 
 def _fts_empresa_exists(db: Session) -> bool:
@@ -386,7 +472,8 @@ def busca_empresa_nome(db: Session, nome: str, skip: int = 0, limit: int = 20, k
         rows = db.execute(text(f"""
             SELECT e.cd_cnpjbasico, e.nm_razaosocial,
                    est.cd_cnpjordem, est.cd_cnpjdv, est.nm_nomefantasia,
-                   est.cd_situacaocadastral, est.sg_uf, est.cd_municipio
+                   est.cd_situacaocadastral, est.sg_uf, est.cd_municipio,
+                   est.nm_situacaoespecial
             FROM empresa e
             LEFT JOIN estabelecimento est
                 ON e.cd_cnpjbasico = est.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
@@ -417,7 +504,8 @@ def busca_empresa_nome(db: Session, nome: str, skip: int = 0, limit: int = 20, k
         rows = db.execute(text("""
             SELECT e.cd_cnpjbasico, e.nm_razaosocial,
                    est.cd_cnpjordem, est.cd_cnpjdv, est.nm_nomefantasia,
-                   est.cd_situacaocadastral, est.sg_uf, est.cd_municipio
+                   est.cd_situacaocadastral, est.sg_uf, est.cd_municipio,
+                   est.nm_situacaoespecial
             FROM empresa e
             LEFT JOIN estabelecimento est
                 ON e.cd_cnpjbasico = est.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
@@ -469,7 +557,8 @@ def busca_empresa_nome(db: Session, nome: str, skip: int = 0, limit: int = 20, k
             )
             SELECT fts.cd_cnpjbasico, e.nm_razaosocial,
                    est.cd_cnpjordem, est.cd_cnpjdv, est.nm_nomefantasia,
-                   est.cd_situacaocadastral, est.sg_uf, est.cd_municipio
+                   est.cd_situacaocadastral, est.sg_uf, est.cd_municipio,
+                   est.nm_situacaoespecial
             FROM fts
             JOIN empresa e ON fts.cd_cnpjbasico = e.cd_cnpjbasico
             LEFT JOIN estabelecimento est
@@ -499,7 +588,8 @@ def busca_empresa_nome(db: Session, nome: str, skip: int = 0, limit: int = 20, k
         rows = db.execute(text("""
             SELECT e.cd_cnpjbasico, e.nm_razaosocial,
                    est.cd_cnpjordem, est.cd_cnpjdv, est.nm_nomefantasia,
-                   est.cd_situacaocadastral, est.sg_uf, est.cd_municipio
+                   est.cd_situacaocadastral, est.sg_uf, est.cd_municipio,
+                   est.nm_situacaoespecial
             FROM empresa e
             LEFT JOIN estabelecimento est
                 ON e.cd_cnpjbasico = est.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
@@ -526,13 +616,15 @@ def _empresa_rows_to_list(rows) -> list:
         cnpj_completo = cnpj_formatado = None
         if r.cd_cnpjordem and r.cd_cnpjdv:
             cnpj_completo, cnpj_formatado = _fmt_cnpj(r.cd_cnpjbasico, r.cd_cnpjordem, r.cd_cnpjdv)
+        sit_esp = getattr(r, "nm_situacaoespecial", None) or None
         resultados.append({
             "cnpj_basico":             r.cd_cnpjbasico,
             "cnpj_completo":           cnpj_completo,
             "cnpj_completo_formatado": cnpj_formatado,
-            "razao_social":            r.nm_razaosocial,
+            "razao_social":            _strip_situacao_especial(r.nm_razaosocial, sit_esp),
             "nome_fantasia":           r.nm_nomefantasia or None,
             "situacao_cadastral":      SITUACAO.get(r.cd_situacaocadastral, r.cd_situacaocadastral),
+            "situacao_especial":       sit_esp,
             "uf":                      r.sg_uf,
             "municipio_descricao":     _cache["municipio"].get(r.cd_municipio),
         })

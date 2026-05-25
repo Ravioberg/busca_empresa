@@ -107,6 +107,7 @@ class EmpresaListItem(BaseModel):
     razao_social: Optional[str] = None
     nome_fantasia: Optional[str] = None
     situacao_cadastral: Optional[str] = None
+    situacao_especial: Optional[str] = None
     uf: Optional[str] = None
     municipio_descricao: Optional[str] = None
 

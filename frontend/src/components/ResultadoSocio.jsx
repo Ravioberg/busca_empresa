@@ -1,5 +1,39 @@
 import { useState, useEffect } from "react";
 import { buscarPerfilSocio } from "../api";
+import { RedeSocio } from "./RedeTree";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function parseDateBR(s) {
+  if (!s) return 0;
+  const [d, m, y] = s.split("/");
+  return new Date(+y, +m - 1, +d).getTime();
+}
+
+const CARGO_RANK = [
+  "presidente",
+  "vice-presidente",
+  "diretor",
+  "administrador",
+  "sócio-administrador",
+  "conselheiro",
+  "procurador",
+  "sócio",
+];
+
+function rankCargo(qualificacoes = []) {
+  const qs = qualificacoes.map(q => q.toLowerCase());
+  for (let i = 0; i < CARGO_RANK.length; i++) {
+    if (qs.some(q => q.includes(CARGO_RANK[i]))) return i;
+  }
+  return CARGO_RANK.length;
+}
+
+function sortSocios(a, b) {
+  const rankDiff = rankCargo(a.qualificacoes) - rankCargo(b.qualificacoes);
+  if (rankDiff !== 0) return rankDiff;
+  return (a.nome || "").localeCompare(b.nome || "", "pt-BR");
+}
 
 // ── Chips ─────────────────────────────────────────────────────────────────────
 
@@ -57,10 +91,26 @@ function EmpresaTable({ empresas, onVerEmpresa, showSaiu = false }) {
   if (!empresas.length) return (
     <p className="px-6 py-4 text-body-sm text-on-surface-variant">Nenhuma empresa encontrada.</p>
   );
+
+  const sorted = [...empresas].sort(
+    (a, b) => parseDateBR(a.data_entrada) - parseDateBR(b.data_entrada)
+  );
+
+  const scrollStyle = sorted.length > 10
+    ? { maxHeight: 520, overflowY: "auto", overflowX: "hidden" }
+    : {};
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left border-collapse">
-        <thead>
+    <div style={scrollStyle}>
+      <table className="w-full text-left border-collapse" style={{ tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: "35%" }} />
+          <col style={{ width: "22%" }} />
+          <col style={{ width: "15%" }} />
+          <col style={{ width: "20%" }} />
+          <col style={{ width: "8%" }} />
+        </colgroup>
+        <thead className="sticky top-0 z-10">
           <tr className="bg-surface-container-low border-b border-surface-variant">
             <th className="py-3 px-4 text-[11px] text-on-surface-variant uppercase tracking-wider">Empresa</th>
             <th className="py-3 px-4 text-[11px] text-on-surface-variant uppercase tracking-wider">Qualificação</th>
@@ -70,7 +120,7 @@ function EmpresaTable({ empresas, onVerEmpresa, showSaiu = false }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-surface-variant text-body-sm">
-          {empresas.map((e) => (
+          {sorted.map((e) => (
             <tr key={e.cnpj_basico} className="hover:bg-surface-container-lowest/60 group">
               <td className="py-3 px-4 align-top">
                 <div className="font-semibold text-on-surface group-hover:text-primary transition-colors">
@@ -145,10 +195,23 @@ function SocioTable({ socios, onVerSocio }) {
   if (!socios.length) return (
     <p className="px-6 py-4 text-body-sm text-on-surface-variant">Nenhum sócio encontrado.</p>
   );
+
+  const sorted = [...socios].sort(sortSocios);
+
+  const scrollStyle = socios.length > 10
+    ? { maxHeight: 520, overflowY: "auto", overflowX: "hidden" }
+    : {};
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left border-collapse">
-        <thead>
+    <div style={scrollStyle}>
+      <table className="w-full text-left border-collapse" style={{ tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: "35%" }} />
+          <col style={{ width: "37%" }} />
+          <col style={{ width: "20%" }} />
+          <col style={{ width: "8%" }} />
+        </colgroup>
+        <thead className="sticky top-0 z-10">
           <tr className="bg-surface-container-low border-b border-surface-variant">
             <th className="py-3 px-4 text-[11px] text-on-surface-variant uppercase tracking-wider">Nome</th>
             <th className="py-3 px-4 text-[11px] text-on-surface-variant uppercase tracking-wider">Qualificações</th>
@@ -157,7 +220,7 @@ function SocioTable({ socios, onVerSocio }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-surface-variant text-body-sm">
-          {socios.map((s, i) => (
+          {sorted.map((s, i) => (
             <tr key={i} className="hover:bg-surface-container-lowest/60 group">
               <td className="py-3 px-4 align-top">
                 <div className="font-semibold text-on-surface group-hover:text-primary transition-colors">
@@ -199,6 +262,34 @@ function SocioTable({ socios, onVerSocio }) {
   );
 }
 
+// ── CNAEs colapsáveis ─────────────────────────────────────────────────────────
+
+const CNAE_SCROLL_LIMIT = 6;
+const CNAE_ROW_HEIGHT   = 36; // px aproximado por item
+
+function CnaeGroup({ titulo, items, cor }) {
+  if (!items?.length) return null;
+  const scroll = items.length > CNAE_SCROLL_LIMIT;
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] mb-2" style={{ color: cor }}>
+        {titulo}
+      </p>
+      <div
+        style={scroll ? { maxHeight: CNAE_SCROLL_LIMIT * CNAE_ROW_HEIGHT, overflowY: "auto" } : {}}
+        className="flex flex-col gap-1.5"
+      >
+        {items.map(({ codigo, descricao, count }) => (
+          <div key={codigo} className="flex items-start justify-between gap-2">
+            <span className="text-[12px] text-on-surface leading-snug">{descricao || "—"}</span>
+            <span className="text-[11px] text-on-surface-variant shrink-0">{count}×</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, onVerSocio }) {
@@ -215,7 +306,6 @@ export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, o
       setLoading(true);
       setErro(null);
       try {
-        // Chave forte: envia nome+cpf juntos para o backend filtrar com precisão
         const res = await buscarPerfilSocio(cpf || null, nome || null);
         if (cancelled) return;
         if (!res) { setErro("Perfil não encontrado."); return; }
@@ -231,15 +321,22 @@ export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, o
     return () => { cancelled = true; };
   }, [cpf, nome]);
 
-  const info   = perfil?.info || {};
-  const porte  = perfil?.porte_acumulado || {};
-  const nAtivo = perfil?.empresas_ativas?.length || 0;
+  const info    = perfil?.info || {};
+  const porte   = perfil?.porte_acumulado || {};
+  const nAtivo  = perfil?.empresas_ativas?.length || 0;
   const nInativo = perfil?.empresas_inativas?.length || 0;
 
   const fmtCapital = (v) =>
     v > 0
       ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })
       : "—";
+
+  // Qualificações: separa atuais (aparecem em ativas) das anteriores
+  const qualsNasAtivas = new Set(
+    (perfil?.empresas_ativas || []).flatMap(e => e.qualificacoes || [])
+  );
+  const qualsAtuais    = (perfil?.qualificacoes_proprias || []).filter(q => qualsNasAtivas.has(q.descricao));
+  const qualsAnteriores = (perfil?.qualificacoes_proprias || []).filter(q => !qualsNasAtivas.has(q.descricao));
 
   return (
     <main className="flex-1 md:ml-52 flex flex-col min-h-screen bg-background">
@@ -279,7 +376,7 @@ export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, o
             {/* ── Coluna esquerda ── */}
             <div className="lg:col-span-4 flex flex-col gap-4">
 
-              {/* Informações pessoais */}
+              {/* Identificação */}
               <div className="bg-surface-container-lowest rounded-xl border border-surface-variant p-6">
                 <h2 className="text-headline-sm text-on-surface mb-4 flex items-center gap-2">
                   <span className="material-symbols-outlined text-primary">badge</span>
@@ -287,19 +384,16 @@ export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, o
                 </h2>
                 <div className="space-y-3 text-body-sm">
                   {[
-                    { label: "Nome", value: info.nome },
-                    { label: "CPF/CNPJ (mascarado)", value: info.cpf, mono: true },
-                    { label: "Tipo", value: info.tipo },
-                    { label: "Faixa Etária", value: info.faixa_etaria },
+                    { label: "Nome",                  value: info.nome },
+                    { label: "CPF/CNPJ (mascarado)",  value: info.cpf, mono: true },
+                    { label: "Tipo",                   value: info.tipo },
+                    { label: "Faixa Etária",           value: info.faixa_etaria },
                   ].filter(f => f.value).map(({ label, value, mono }) => (
                     <div key={label}>
                       <span className="text-[10px] uppercase tracking-wider text-on-surface-variant block mb-0.5">{label}</span>
                       <span className={mono ? "font-mono text-on-surface" : "text-on-surface"}>{value}</span>
                     </div>
                   ))}
-                  <p className="text-[11px] text-on-surface-variant pt-2 border-t border-surface-variant">
-                    CPF com dígitos omitidos pela RF — diferentes pessoas podem compartilhar os mesmos dígitos visíveis.
-                  </p>
                 </div>
               </div>
 
@@ -311,10 +405,10 @@ export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, o
                 </h2>
                 <div className="grid grid-cols-2 gap-4">
                   {[
-                    { label: "Empresas ativas", value: nAtivo, color: "text-green-600" },
-                    { label: "Ex-vínculos", value: nInativo, color: "text-slate-400" },
-                    { label: "Sócios comuns", value: perfil.socios_comuns?.length || 0, color: "text-primary" },
-                    { label: "Ex-sócios comuns", value: perfil.ex_socios_comuns?.length || 0, color: "text-slate-400" },
+                    { label: "Empresas ativas",    value: nAtivo,                              color: "text-green-600" },
+                    { label: "Ex-vínculos",        value: nInativo,                            color: "text-slate-400" },
+                    { label: "Sócios comuns",      value: perfil.socios_comuns?.length || 0,   color: "text-primary" },
+                    { label: "Ex-sócios comuns",   value: perfil.ex_socios_comuns?.length || 0, color: "text-slate-400" },
                   ].map(({ label, value, color }) => (
                     <div key={label}>
                       <span className={`text-3xl font-bold tracking-tight block ${color}`}>{value}</span>
@@ -345,63 +439,64 @@ export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, o
               </div>
 
               {/* Qualificações exercidas */}
-              {perfil.qualificacoes_proprias?.length > 0 && (
+              {(qualsAtuais.length > 0 || qualsAnteriores.length > 0) && (
                 <div className="bg-surface-container-lowest rounded-xl border border-surface-variant p-6">
                   <h2 className="text-headline-sm text-on-surface mb-4 flex items-center gap-2">
                     <span className="material-symbols-outlined text-primary">military_tech</span>
                     Qualificações Exercidas
                   </h2>
-                  <div className="flex flex-col gap-2">
-                    {perfil.qualificacoes_proprias.map(({ descricao, count }) => (
-                      <div key={descricao} className="flex items-center justify-between">
-                        <QualChip label={descricao} />
-                        <span className="text-[11px] text-on-surface-variant">{count}×</span>
-                      </div>
-                    ))}
-                  </div>
+
+                  {qualsAtuais.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-green-700">Atuais</p>
+                      {qualsAtuais.map(({ descricao, count }) => (
+                        <div key={descricao} className="flex items-center justify-between">
+                          <QualChip label={descricao} />
+                          <span className="text-[11px] text-on-surface-variant">{count}×</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {qualsAtuais.length > 0 && qualsAnteriores.length > 0 && (
+                    <div className="border-t my-3" style={{ borderColor: "#e2e8f0" }} />
+                  )}
+
+                  {qualsAnteriores.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">Anteriores</p>
+                      {qualsAnteriores.map(({ descricao, count }) => (
+                        <div key={descricao} className="flex items-center justify-between">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-50 text-slate-500 border border-slate-200 text-[11px] font-medium">
+                            {descricao}
+                          </span>
+                          <span className="text-[11px] text-on-surface-variant">{count}×</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* CNAEs */}
               {(perfil.cnaes_principais?.length > 0 || perfil.cnaes_secundarios?.length > 0) && (
-                <div className="bg-surface-container-lowest rounded-xl border border-surface-variant p-6">
-                  <h2 className="text-headline-sm text-on-surface mb-4 flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary">category</span>
-                    CNAEs
-                  </h2>
-                  {perfil.cnaes_principais?.length > 0 && (
-                    <>
-                      <div className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-2">Principais</div>
-                      <div className="flex flex-col gap-1.5 mb-4">
-                        {perfil.cnaes_principais.map(({ codigo, descricao, count }) => (
-                          <div key={codigo} className="flex items-start justify-between gap-2">
-                            <div>
-                              <span className="font-mono text-[11px] text-on-surface-variant">{codigo} </span>
-                              <span className="text-[12px] text-on-surface">{descricao || "—"}</span>
-                            </div>
-                            <span className="text-[11px] text-on-surface-variant shrink-0">{count}×</span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  {perfil.cnaes_secundarios?.length > 0 && (
-                    <>
-                      <div className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-2">Secundários</div>
-                      <div className="flex flex-col gap-1.5">
-                        {perfil.cnaes_secundarios.map(({ codigo, descricao, count }) => (
-                          <div key={codigo} className="flex items-start justify-between gap-2">
-                            <div>
-                              <span className="font-mono text-[11px] text-on-surface-variant">{codigo} </span>
-                              <span className="text-[12px] text-on-surface">{descricao || "—"}</span>
-                            </div>
-                            <span className="text-[11px] text-on-surface-variant shrink-0">{count}×</span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
+                <Section icon="category" title="CNAEs" defaultOpen={true}>
+                  <div className="p-6 space-y-4">
+                    <CnaeGroup
+                      titulo="Principais"
+                      items={perfil.cnaes_principais}
+                      cor="#15803d"
+                    />
+                    {perfil.cnaes_principais?.length > 0 && perfil.cnaes_secundarios?.length > 0 && (
+                      <div className="border-t" style={{ borderColor: "#e2e8f0" }} />
+                    )}
+                    <CnaeGroup
+                      titulo="Secundários"
+                      items={perfil.cnaes_secundarios}
+                      cor="#64748b"
+                    />
+                  </div>
+                </Section>
               )}
             </div>
 
@@ -443,6 +538,13 @@ export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, o
                   <SocioTable socios={perfil.ex_socios_comuns} onVerSocio={onVerSocio} />
                 </Section>
               )}
+
+              {/* Mapa de Relacionamentos */}
+              <Section icon="hub" title="Mapa de Relacionamentos" defaultOpen={false}>
+                <div className="p-2">
+                  <RedeSocio perfil={perfil} />
+                </div>
+              </Section>
             </div>
           </div>
         )}

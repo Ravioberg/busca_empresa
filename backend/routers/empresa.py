@@ -21,6 +21,14 @@ def busca_por_nome(
     return crud.busca_empresa_nome(db, nome, skip, limit, known_total=known_total)
 
 
+@router.get("/{cnpj}/rede")
+def busca_rede(cnpj: str, db: Session = Depends(get_db)):
+    resultado = crud.get_empresa_rede(db, cnpj)
+    if not resultado:
+        raise HTTPException(status_code=404, detail="CNPJ não encontrado.")
+    return resultado
+
+
 @router.get("/{cnpj}", response_model=EmpresaDetalhe)
 def busca_por_cnpj(cnpj: str, db: Session = Depends(get_db)):
     resultado = crud.get_empresa_by_cnpj(db, cnpj)

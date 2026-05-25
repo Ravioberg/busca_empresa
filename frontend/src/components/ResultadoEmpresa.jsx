@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { buscarEmpresaRede } from "../api";
+import { RedeEmpresa } from "./RedeTree";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
@@ -280,13 +282,32 @@ function FilialTabela({ filiais, onVerEmpresa }) {
 // ─── ResultadoEmpresa ─────────────────────────────────────────────────────────
 export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio, onVerEmpresa }) {
   const [exInativos, setExInativos] = useState(false);
+  const [redeAberta, setRedeAberta]   = useState(false);
+  const [redeData,   setRedeData]     = useState(null);
+  const [redeLoading, setRedeLoading] = useState(false);
+
+  const carregarRede = useCallback(async () => {
+    if (redeData || redeLoading) return;
+    setRedeLoading(true);
+    try {
+      const cnpj = dados.cnpj_completo || dados.cnpj_basico + "000100";
+      const d = await buscarEmpresaRede(cnpj);
+      setRedeData(d);
+    } finally {
+      setRedeLoading(false);
+    }
+  }, [dados, redeData, redeLoading]);
+
+  function toggleRede() {
+    if (!redeAberta) carregarRede();
+    setRedeAberta(v => !v);
+  }
 
   if (!dados) return null;
 
-  const telefone =
-    dados.ddd1 && dados.telefone1
-      ? `(${dados.ddd1}) ${dados.telefone1}${dados.ddd2 && dados.telefone2 ? ` / (${dados.ddd2}) ${dados.telefone2}` : ""}`
-      : null;
+  const telefone1 = dados.ddd1 && dados.telefone1 ? `(${dados.ddd1}) ${dados.telefone1}` : null;
+  const telefone2 = dados.ddd2 && dados.telefone2 ? `(${dados.ddd2}) ${dados.telefone2}` : null;
+  const telefone  = telefone1 || telefone2;
 
   const enderecoLinha1 = [dados.tipo_logradouro, dados.logradouro, dados.numero && `nº ${dados.numero}`].filter(Boolean).join(" ");
   const enderecoLinha2 = [dados.complemento, dados.bairro].filter(Boolean).join(", ");
@@ -409,9 +430,9 @@ export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio, onVerEmp
             style={{ borderColor: "#e2e8f0" }}
           >
             {[
-              { label: empresaEncerrada ? "Fechamento" : "Situação desde", val: dados.data_situacao || "—", sub: null },
-              { label: "Quadro societário",    val: `${sociosAtivos.length} sócio${sociosAtivos.length !== 1 ? "s" : ""}`, sub: sociosInativos.length > 0 ? `+ ${sociosInativos.length} ex` : null },
-              { label: "Abertura",             val: dados.data_inicio || "—",            sub: null },
+              { label: "Abertura",                                              val: dados.data_inicio || "—",   sub: null },
+              { label: empresaEncerrada ? "Fechamento" : "Situação desde",    val: dados.data_situacao || "—", sub: null },
+              { label: "Capital Social",                                       val: fmtBRL(dados.capital_social), sub: null },
             ].map((cell, i) => (
               <div
                 key={i}
@@ -589,6 +610,42 @@ export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio, onVerEmp
                 <FilialTabela filiais={filiaisInativas} onVerEmpresa={onVerEmpresa} />
               </Secao>
             )}
+
+            {/* Mapa de Relacionamentos */}
+            <div
+              className="bg-white rounded-xl overflow-hidden"
+              style={{ border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(15,23,42,0.04)" }}
+            >
+              <button
+                onClick={toggleRede}
+                className="w-full px-5 py-3.5 flex justify-between items-center border-b transition-colors text-left"
+                style={{ background: "#f8fafc", borderColor: "#e2e8f0" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#f1f5f9"}
+                onMouseLeave={e => e.currentTarget.style.background = "#f8fafc"}
+              >
+                <h3 className="text-[13px] font-semibold flex items-center gap-2" style={{ color: "#0f172a" }}>
+                  <span className="material-symbols-outlined text-[17px]" style={{ color: "#0085ca" }}>hub</span>
+                  Mapa de Relacionamentos
+                </h3>
+                <span className="material-symbols-outlined text-[17px]" style={{ color: "#94a3b8" }}>
+                  {redeAberta ? "expand_less" : "expand_more"}
+                </span>
+              </button>
+              {redeAberta && (
+                <div className="p-2">
+                  {redeLoading && (
+                    <div className="flex items-center justify-center gap-3 py-16 text-[13px]" style={{ color: "#94a3b8" }}>
+                      <span className="material-symbols-outlined animate-spin text-[20px]" style={{ color: "#0085ca" }}>progress_activity</span>
+                      Montando rede societária...
+                    </div>
+                  )}
+                  {redeData && !redeLoading && <RedeEmpresa data={redeData} />}
+                  {!redeLoading && !redeData && (
+                    <p className="py-10 text-center text-[13px]" style={{ color: "#94a3b8" }}>Sem dados de rede.</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Coluna lateral */}
@@ -668,10 +725,17 @@ export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio, onVerEmp
                 {/* Contato */}
                 {(telefone || dados.email) && (
                   <div className="pt-3 border-t space-y-2.5" style={{ borderColor: "#f1f5f9" }}>
-                    {telefone && (
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: "#94a3b8" }}>Contato</p>
+                    {telefone1 && (
                       <div className="flex items-center gap-2.5 text-[13px]" style={{ color: "#334155" }}>
                         <span className="material-symbols-outlined text-[15px]" style={{ color: "#94a3b8" }}>call</span>
-                        {telefone}
+                        {telefone1}
+                      </div>
+                    )}
+                    {telefone2 && (
+                      <div className="flex items-center gap-2.5 text-[13px]" style={{ color: "#334155" }}>
+                        <span className="material-symbols-outlined text-[15px]" style={{ color: "#94a3b8" }}>call</span>
+                        {telefone2}
                       </div>
                     )}
                     {dados.email && (
@@ -690,7 +754,6 @@ export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio, onVerEmp
               <div className="p-5 space-y-4">
                 <Campo label="Natureza Jurídica"           valor={dados.natureza_juridica_descricao} />
                 <Campo label="Porte"                        valor={dados.porte} />
-                <Campo label="Capital Social"               valor={fmtBRL(dados.capital_social)} mono />
                 <Campo label="Qualificação do Responsável"  valor={dados.qualificacao_responsavel_descricao} />
                 <Campo label="Motivo da Situação"           valor={dados.motivo_situacao !== "SEM MOTIVO" ? dados.motivo_situacao : null} />
               </div>
@@ -702,20 +765,20 @@ export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio, onVerEmp
                 {/* MEI */}
                 <div className="space-y-1.5">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: "#94a3b8" }}>MEI</p>
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-center justify-between">
                     {dados.opcao_mei === "S"
                       ? <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full shrink-0" style={{ background: "#eef4f9", color: "#0a5494", border: "1px solid #bfdbfe" }}>MEI</span>
                       : <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full shrink-0" style={{ background: "#f1f5f9", color: "#94a3b8", border: "1px solid #e2e8f0" }}>NÃO</span>}
                     {(dados.data_opcao_mei || dados.data_exclusao_mei) && (
-                      <div className="space-y-0.5">
+                      <div className="space-y-0.5 text-right">
                         {dados.data_opcao_mei && (
-                          <div className="text-[12px]" style={{ color: "#64748b" }}>
-                            Opção: <span style={{ color: "#0f172a", fontFamily: "'JetBrains Mono', monospace" }}>{dados.data_opcao_mei}</span>
+                          <div className="text-[11px]" style={{ color: "#94a3b8" }}>
+                            Opção <span className="ml-1" style={{ color: "#0f172a", fontFamily: "'JetBrains Mono', monospace" }}>{dados.data_opcao_mei}</span>
                           </div>
                         )}
                         {dados.data_exclusao_mei && (
-                          <div className="text-[12px]" style={{ color: "#64748b" }}>
-                            Exclusão: <span style={{ color: "#0f172a", fontFamily: "'JetBrains Mono', monospace" }}>{dados.data_exclusao_mei}</span>
+                          <div className="text-[11px]" style={{ color: "#94a3b8" }}>
+                            Exclusão <span className="ml-1" style={{ color: "#0f172a", fontFamily: "'JetBrains Mono', monospace" }}>{dados.data_exclusao_mei}</span>
                           </div>
                         )}
                       </div>
@@ -725,20 +788,20 @@ export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio, onVerEmp
                 {/* Simples Nacional */}
                 <div className="border-t pt-4 space-y-1.5" style={{ borderColor: "#f1f5f9" }}>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: "#94a3b8" }}>Simples Nacional</p>
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-center justify-between">
                     {dados.opcao_simples === "S"
                       ? <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full shrink-0" style={{ background: "#ecfdf5", color: "#15803d", border: "1px solid #bbf7d0" }}>OPTANTE</span>
                       : <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full shrink-0" style={{ background: "#f1f5f9", color: "#94a3b8", border: "1px solid #e2e8f0" }}>NÃO OPTANTE</span>}
                     {(dados.data_opcao_simples || dados.data_exclusao_simples) && (
-                      <div className="space-y-0.5">
+                      <div className="space-y-0.5 text-right">
                         {dados.data_opcao_simples && (
-                          <div className="text-[12px]" style={{ color: "#64748b" }}>
-                            Opção: <span style={{ color: "#0f172a", fontFamily: "'JetBrains Mono', monospace" }}>{dados.data_opcao_simples}</span>
+                          <div className="text-[11px]" style={{ color: "#94a3b8" }}>
+                            Opção <span className="ml-1" style={{ color: "#0f172a", fontFamily: "'JetBrains Mono', monospace" }}>{dados.data_opcao_simples}</span>
                           </div>
                         )}
                         {dados.data_exclusao_simples && (
-                          <div className="text-[12px]" style={{ color: "#64748b" }}>
-                            Exclusão: <span style={{ color: "#0f172a", fontFamily: "'JetBrains Mono', monospace" }}>{dados.data_exclusao_simples}</span>
+                          <div className="text-[11px]" style={{ color: "#94a3b8" }}>
+                            Exclusão <span className="ml-1" style={{ color: "#0f172a", fontFamily: "'JetBrains Mono', monospace" }}>{dados.data_exclusao_simples}</span>
                           </div>
                         )}
                       </div>

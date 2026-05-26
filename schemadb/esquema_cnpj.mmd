@@ -1,0 +1,32 @@
+
+    municipio {
+        STRING cd_municipio PK
+        STRING nm_municipio
+    }
+    natureza {
+        STRING cd_naturezajuridica PK
+        STRING ds_naturezajuridica
+    }
+    qualificacao {
+        STRING cd_qualificacao PK
+        STRING ds_qualificacao
+    }
+    motivo {
+        STRING cd_motivosituacaocadastral PK
+        STRING ds_motivosituacaocadastral
+    }
+    pais {
+        STRING cd_pais PK
+        STRING nm_pais
+    }
+    empresa ||--o{ estabelecimento : "cd_cnpjbasico"
+    empresa ||--o{ socio : "cd_cnpjbasico"
+    empresa ||--o| simples : "cd_cnpjbasico"
+    estabelecimento }o--|| municipio : "cd_municipio"
+    estabelecimento }o--|| cnae : "cd_cnaefiscalprincipal"
+    estabelecimento }o--|| motivo : "cd_motivosituacaocadastral"
+    estabelecimento }o--|| pais : "cd_pais"
+    empresa }o--|| natureza : "cd_naturezajuridica"
+    empresa }o--|| qualificacao : "cd_qualificacaoresponsavel"
+    socio }o--|| pais : "cd_pais"
+    socio }o--|| qualificacao : "cd_qualificacaosocio"

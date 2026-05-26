@@ -3,6 +3,11 @@
 /backend/cnpj.db
 /backend/cnpj_demo.db
 /backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+backend/venv/
+node_modules/
+.env
 
 # Segredos
 /backend/.env

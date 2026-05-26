@@ -1,6 +1,8 @@
-import sqlite3
-
-con = sqlite3.connect('cnpj.db')
+import sqlite3, os
+from pathlib import Path
+BASE_DIR = Path(__file__).parent.parent.parent
+db_path = str(BASE_DIR / "cnpj.db")
+con = sqlite3.connect(db_path)
 cur = con.cursor()
 
 print("=" * 60)
@@ -64,7 +66,12 @@ for mes in sorted(set(list(proc.keys()) + list(real.keys()))):
     d = r - t
     total_track += t
     total_real += r
-    flag = 'OK' if d == 0 else f'DIFF +{d:,}' if d > 0 else f'DIFF {d:,}'
+    if d == 0:
+        flag = 'OK'
+    elif d > 0:
+        flag = f'DIFF +{d:,}'
+    else:
+        flag = f'DIFF {d:,}'
     marker = '  <---' if d != 0 else ''
     print(f"  {mes:<10} {t:>12,} {r:>12,} {d:>10,}  {flag}{marker}")
 print(f"  {'TOTAL':<10} {total_track:>12,} {total_real:>12,} {total_real - total_track:>10,}")

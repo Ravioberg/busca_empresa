@@ -1,9 +1,19 @@
 import sqlite3, os, sys
 sys.stdout.reconfigure(encoding='utf-8')
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
-db_path = os.getenv("DATABASE_URL", "sqlite:///./cnpj.db").replace("sqlite:///", "")
+# Resolve caminhos relativos à raiz do backend
+BASE_DIR = Path(__file__).parent.parent.parent
+load_dotenv(BASE_DIR / ".env")
+
+db_path_raw = os.getenv("DATABASE_URL", "sqlite:///./cnpj.db")
+if db_path_raw.startswith("sqlite:///./"):
+    db_path = str(BASE_DIR / db_path_raw.replace("sqlite:///./", ""))
+else:
+    db_path = db_path_raw.replace("sqlite:///", "")
+
+print(f"Banco: {db_path}")
 conn = sqlite3.connect(db_path, timeout=30)
 conn.execute("PRAGMA journal_mode=WAL")
 

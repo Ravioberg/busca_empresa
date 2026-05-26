@@ -1,5 +1,8 @@
-import sqlite3
-con = sqlite3.connect('cnpj.db')
+import sqlite3, os
+from pathlib import Path
+BASE_DIR = Path(__file__).parent.parent.parent
+db_path = str(BASE_DIR / "cnpj.db")
+con = sqlite3.connect(db_path)
 cur = con.cursor()
 
 # Uma passagem só com GROUP BY — evita self-join em 70M linhas

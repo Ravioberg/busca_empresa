@@ -1,16 +1,17 @@
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Annotated
 from fastapi import Depends, FastAPI
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from dotenv import load_dotenv
 
-from database import engine, Base, get_db
-import models  # garante que os models são registrados antes do create_all
-from routers import empresa, socio
-import crud
+from .database import engine, Base, get_db
+from . import models  # garante que os models são registrados antes do create_all
+from .routers import empresa, socio
+from . import crud
 
 load_dotenv()
 
@@ -45,9 +46,9 @@ app.include_router(socio.router)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 @app.get("/api/v1/info")
-def info(db: Session = Depends(get_db)):
+def info(db: Annotated[Session, Depends(get_db)]):
     return {"mes_atual": crud._get_mes_atual(db)}

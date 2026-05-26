@@ -8,7 +8,7 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./cnpj.db")
 
 def is_postgres() -> bool:
-    return DATABASE_URL.startswith("postgresql") or DATABASE_URL.startswith("postgres")
+    return DATABASE_URL.startswith(("postgresql", "postgres"))
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)

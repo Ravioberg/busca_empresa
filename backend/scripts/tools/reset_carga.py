@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from sqlalchemy import create_engine, text
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).parent.parent.parent
 DATABASE_URL = f"sqlite:///{BASE_DIR / 'cnpj.db'}"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 60})

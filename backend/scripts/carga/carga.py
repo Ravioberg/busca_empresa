@@ -40,8 +40,10 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # Configuração
 # ---------------------------------------------------------------------------
-BASE_DIR     = Path(__file__).parent
-DADOS_BRUTOS = Path(os.getenv("DADOS_BRUTOS", str(BASE_DIR / "../dados-brutos"))).resolve()
+BASE_DIR     = Path(__file__).parent.parent.parent # Raiz do backend
+load_dotenv(BASE_DIR / ".env")
+
+DADOS_BRUTOS = Path(os.getenv("DADOS_BRUTOS", str(BASE_DIR / "dados-brutos"))).resolve()
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'cnpj.db'}")
 CHUNK_SIZE   = 100_000
 MES_DOMINIOS = "2026-04"
@@ -870,9 +872,13 @@ def _main():
         print(f"ERRO: dados-brutos nao encontrado: {DADOS_BRUTOS}")
         sys.exit(1)
 
-    sys.path.insert(0, str(BASE_DIR))
-    from database import Base
-    import models  # noqa: F401
+    # Adiciona a raiz do projeto e a pasta app ao path
+    root_path = Path(__file__).parent.parent.parent
+    sys.path.insert(0, str(root_path))
+    sys.path.insert(0, str(root_path / "app"))
+
+    from app.database import Base
+    from app import models  # noqa: F401
 
     sqlite_args = {"check_same_thread": False, "timeout": 120} if DATABASE_URL.startswith("sqlite") else {}
     engine = create_engine(DATABASE_URL, connect_args=sqlite_args)

@@ -13,7 +13,7 @@ Seguro para agendador (Task Scheduler / cron):
     - Lock de arquivo previne execuções simultâneas.
     - Tudo registrado em sync_mensal.log.
 """
-
+    
 import os
 import re
 import sys
@@ -34,14 +34,14 @@ from sqlalchemy import create_engine, text
 # ---------------------------------------------------------------------------
 # Configuração
 # ---------------------------------------------------------------------------
-BASE_DIR     = Path(__file__).parent
+BASE_DIR     = Path(__file__).parent.parent.parent # Raiz do backend
 load_dotenv(BASE_DIR / ".env")
 
 # Resolve paths relativos a BASE_DIR (backend/) para ser consistente com carga.py,
 # que sempre roda com cwd=backend/. Evita ambiguidade do diretório de trabalho.
 _db_env      = os.getenv("DADOS_BRUTOS")
 DADOS_BRUTOS = (BASE_DIR / _db_env).resolve() if _db_env \
-               else (BASE_DIR / "../dados-brutos").resolve()
+               else (BASE_DIR / "dados-brutos").resolve()
 
 _raw_db_url  = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'cnpj.db'}")
 if _raw_db_url.startswith("sqlite:///") and not os.path.isabs(_raw_db_url[len("sqlite:///"):]):
@@ -50,9 +50,9 @@ if _raw_db_url.startswith("sqlite:///") and not os.path.isabs(_raw_db_url[len("s
     DATABASE_URL = f"sqlite:///{(BASE_DIR / _rel).resolve()}"
 else:
     DATABASE_URL = _raw_db_url
-CARGA_PY      = BASE_DIR / "carga.py"
-LOG_FILE      = BASE_DIR / "sync_mensal.log"
-LOCK_FILE     = BASE_DIR / "sync_mensal.lock"
+CARGA_PY      = Path(__file__).parent / "carga2.py"
+LOG_FILE      = BASE_DIR / "logs" / "sync_mensal.log"
+LOCK_FILE     = BASE_DIR / "logs" / "sync_mensal.lock"
 
 SITE_URL      = "https://dados-abertos-rf-cnpj.casadosdados.com.br/arquivos/"
 

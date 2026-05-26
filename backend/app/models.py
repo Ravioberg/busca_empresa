@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Integer, PrimaryKeyConstraint, UniqueConstraint
-from database import Base
+from .database import Base
 
 
 class CheckpointCarga(Base):

@@ -13,7 +13,9 @@ import sqlite3
 import unicodedata
 import os
 
-DB_PATH = "cnpj_demo.db"
+from pathlib import Path
+BASE_DIR = Path(__file__).parent.parent.parent
+DB_PATH = str(BASE_DIR / "cnpj_demo.db")
 MES_ATUAL = "2026-04"
 MES_ANTIGO = "2023-06"
 
@@ -246,19 +248,26 @@ conn.executemany("""
 # ── Sócios ────────────────────────────────────────────────────────────────────
 # (basico, id_socio, nome, cpf, qualif, entrada, pais, cpf_rep, nm_rep, qualif_rep, faixa, dt_atu)
 
+NOME_MARIA = "MARIA SILVA"
+CPF_MARIA = "***123456**"
+NOME_JOAO = "JOAO SANTOS"
+CPF_JOAO = "***234567**"
+NOME_CARLOS = "CARLOS PEREIRA"
+CPF_CARLOS = "***345678**"
+
 socios = [
     # MARIA SILVA — ativa em 2 empresas, ex-sócia em 1
-    ("12345678","1","MARIA SILVA",    "***123456**","22","20150301","105","","","","5",MES_ATUAL),
-    ("23456789","1","MARIA SILVA",    "***123456**","05","20180601","105","","","","5",MES_ATUAL),
-    ("45678901","1","MARIA SILVA",    "***123456**","20","20200901","105","","","","5",MES_ANTIGO),  # ex-sócia
+    ("12345678", "1", NOME_MARIA, CPF_MARIA, "22", "20150301", "105", "", "", "", "5", MES_ATUAL),
+    ("23456789", "1", NOME_MARIA, CPF_MARIA, "05", "20180601", "105", "", "", "", "5", MES_ATUAL),
+    ("45678901", "1", NOME_MARIA, CPF_MARIA, "20", "20200901", "105", "", "", "", "5", MES_ANTIGO),  # ex-sócia
 
     # JOAO SANTOS — ativo em 2 empresas (em comum com MARIA)
-    ("12345678","1","JOAO SANTOS",    "***234567**","20","20150301","105","","","","4",MES_ATUAL),
-    ("23456789","1","JOAO SANTOS",    "***234567**","20","20180601","105","","","","4",MES_ATUAL),
+    ("12345678", "1", NOME_JOAO, CPF_JOAO, "20", "20150301", "105", "", "", "", "4", MES_ATUAL),
+    ("23456789", "1", NOME_JOAO, CPF_JOAO, "20", "20180601", "105", "", "", "", "4", MES_ATUAL),
 
     # CARLOS PEREIRA — ativo em 2 empresas (1 em comum com MARIA)
-    ("12345678","1","CARLOS PEREIRA", "***345678**","22","20150301","105","","","","6",MES_ATUAL),
-    ("34567890","1","CARLOS PEREIRA", "***345678**","22","20190101","105","","","","6",MES_ATUAL),
+    ("12345678", "1", NOME_CARLOS, CPF_CARLOS, "22", "20150301", "105", "", "", "", "6", MES_ATUAL),
+    ("34567890", "1", NOME_CARLOS, CPF_CARLOS, "22", "20190101", "105", "", "", "", "6", MES_ATUAL),
 
     # ANA OLIVEIRA — ativa em 1 empresa
     ("34567890","1","ANA OLIVEIRA",   "***456789**","20","20190101","105","","","","4",MES_ATUAL),
@@ -355,4 +364,4 @@ print("Para usar este banco, edite o arquivo .env na pasta backend:")
 print("  DATABASE_URL=sqlite:///./cnpj_demo.db")
 print()
 print("Depois reinicie o uvicorn:")
-print("  py -3.12 -m uvicorn main:app --reload")
+print("  py -3.12 -m uvicorn app.main:app --reload")

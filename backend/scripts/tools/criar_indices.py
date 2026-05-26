@@ -9,11 +9,19 @@ import time
 import unicodedata
 import sqlite3
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Resolve caminhos relativos à raiz do backend
+BASE_DIR = Path(__file__).parent.parent.parent
+load_dotenv(BASE_DIR / ".env")
 
-db_path = os.getenv("DATABASE_URL", "sqlite:///./cnpj.db").replace("sqlite:///", "")
+db_path_raw = os.getenv("DATABASE_URL", "sqlite:///./cnpj.db")
+if db_path_raw.startswith("sqlite:///./"):
+    db_path = str(BASE_DIR / db_path_raw.replace("sqlite:///./", ""))
+else:
+    db_path = db_path_raw.replace("sqlite:///", "")
+
 print(f"Banco: {db_path}\n")
 
 conn = sqlite3.connect(db_path, timeout=600)
@@ -34,14 +42,24 @@ conn.create_function("normalizar", 1, _normalizar)
 
 
 def step(descricao, sql):
-    print(f"[→] {descricao}...", flush=True)
+    print(f"[*] {descricao}...", flush=True)
     t = time.time()
     conn.execute(sql)
     conn.commit()
-    print(f"    ✓ {time.time() - t:.1f}s\n", flush=True)
+    print(f"    OK {time.time() - t:.1f}s\n", flush=True)
 
 
 # ── Índices B-tree ─────────────────────────────────────────────────────────────
+
+step(
+    "Índice empresa.nm_razaosocial (busca por prefixo)",
+    "CREATE INDEX IF NOT EXISTS idx_empresa_razao ON empresa(nm_razaosocial)"
+)
+
+step(
+    "Índice socio.nm_nomesociorazaosocial (busca por prefixo)",
+    "CREATE INDEX IF NOT EXISTS idx_socio_nome ON socio(nm_nomesociorazaosocial)"
+)
 
 step(
     "Índice socio.cd_cnpjbasico  (crítico: página de detalhe da empresa)",

@@ -11,19 +11,25 @@ ou usando o modo --apenas-indices se os dados já foram importados.
 """
 import sys
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Resolve caminhos relativos à raiz do backend
+BASE_DIR = Path(__file__).parent.parent.parent
+load_dotenv(BASE_DIR / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-if not (DATABASE_URL.startswith("postgresql") or DATABASE_URL.startswith("postgres")):
+if not DATABASE_URL.startswith(("postgresql", "postgres")):
     print("ERRO: DATABASE_URL não aponta para PostgreSQL.")
     print(f"  Atual: {DATABASE_URL}")
     sys.exit(1)
 
+# Adiciona a raiz do backend para importar o pacote app.
+sys.path.insert(0, str(BASE_DIR))
+
 from sqlalchemy import create_engine, text
-import models  # garante que todos os models são importados
-from database import Base
+from app import models  # noqa: F401 - garante que todos os models sao importados
+from app.database import Base
 
 engine = create_engine(DATABASE_URL)
 

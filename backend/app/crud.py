@@ -4,8 +4,8 @@ from collections import defaultdict
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from models import Empresa, Estabelecimento, Socio, Simples
-from database import is_postgres
+from .models import Empresa, Estabelecimento, Socio, Simples
+from .database import is_postgres
 
 
 SITUACAO = {"01": "Nula", "02": "Ativa", "03": "Suspensa", "04": "Inapta", "08": "Baixada"}
@@ -159,6 +159,90 @@ def _parse_cnaes_secundarios(raw: str | None) -> list:
     ]
 
 
+def _inferir_datas_inicio(registros_ord: list) -> list[str | None]:
+    """
+    Infere a data de início de cada cargo baseado no histórico de atualizações.
+    """
+    n = len(registros_ord)
+    start_dates = [None] * n
+    if n == 0:
+        return start_dates
+
+    # Cargo mais antigo (último na lista DESC): data real de entrada na empresa
+    start_dates[n - 1] = _fmt_date(registros_ord[n - 1].dt_dataentradasociedade)
+
+    for i in range(n - 2, -1, -1):
+        prev_ultima = registros_ord[i + 1].dt_ultimaatualizacao
+        curr_ultima = registros_ord[i].dt_ultimaatualizacao
+
+        if not prev_ultima:
+            continue
+
+        if prev_ultima == curr_ultima:
+            # Troca de cargo dentro do mesmo ciclo mensal da RF
+            start_dates[i] = _fmt_mes(curr_ultima)
+        else:
+            candidate = _next_month(prev_ultima)
+            # Guard: se a data inferida for posterior ao último mês do próprio registro,
+            # "desde" ficaria depois de "saiu em" — usa o mês real da última aparição.
+            cand_ym = f"{candidate[3:7]}-{candidate[:2]}" if len(candidate) == 7 else ""
+            if cand_ym > (curr_ultima or ""):
+                start_dates[i] = _fmt_mes(curr_ultima) if curr_ultima else None
+            else:
+                start_dates[i] = candidate
+
+    return start_dates
+
+
+def _processar_grupo_socio(cpf: str, nome: str, registros: list, mes_atual: str) -> dict:
+    """
+    Processa um grupo de registros de um mesmo sócio (CPF/Nome).
+    """
+    # Sort: mês mais recente primeiro; dentro do mesmo mês, cargo de maior hierarquia primeiro
+    registros_ord = sorted(
+        registros,
+        key=lambda r: (r.dt_ultimaatualizacao or "", -QUALIFICACAO_RANK.get(r.cd_qualificacaosocio, 99)),
+        reverse=True,
+    )
+    ativo = any(r.dt_ultimaatualizacao == mes_atual for r in registros_ord)
+
+    # Deduplica snapshots mensais consecutivos com a mesma qualificação.
+    deduped = []
+    for rec in registros_ord:
+        if not deduped or deduped[-1].cd_qualificacaosocio != rec.cd_qualificacaosocio:
+            deduped.append(rec)
+    registros_ord = deduped
+
+    start_dates = _inferir_datas_inicio(registros_ord)
+
+    qualificacao_atual = None
+    qualificacoes_anteriores = []
+
+    for i, r in enumerate(registros_ord):
+        is_current = r.dt_ultimaatualizacao == mes_atual
+        item = {
+            "codigo":       r.cd_qualificacaosocio,
+            "descricao":    _qual_desc(r.cd_qualificacaosocio),
+            "data_entrada": start_dates[i],
+            "saiu_em":      None if is_current else _fmt_mes(r.dt_ultimaatualizacao),
+        }
+        if qualificacao_atual is None:
+            qualificacao_atual = item
+        else:
+            qualificacoes_anteriores.append(item)
+
+    ref = registros_ord[0]
+    return {
+        "nome_socio":               nome,
+        "cpf_cnpj_socio":           cpf,
+        "identificador":            IDENTIFICADOR_SOCIO.get(ref.cd_identificadorsocio, ref.cd_identificadorsocio),
+        "faixa_etaria":             FAIXA_ETARIA.get(ref.cd_faixaetaria, ref.cd_faixaetaria),
+        "ativo":                    ativo,
+        "qualificacao_atual":       qualificacao_atual,
+        "qualificacoes_anteriores": qualificacoes_anteriores,
+    }
+
+
 def _agrupar_socios(socios: list, mes_atual: str) -> tuple[list, list]:
     grupos: dict[tuple, list] = defaultdict(list)
     for s in socios:
@@ -168,74 +252,11 @@ def _agrupar_socios(socios: list, mes_atual: str) -> tuple[list, list]:
     ativos, inativos = [], []
 
     for (cpf, nome), registros in grupos.items():
-        # Sort: mês mais recente primeiro; dentro do mesmo mês, cargo de maior hierarquia primeiro
-        registros_ord = sorted(
-            registros,
-            key=lambda r: (r.dt_ultimaatualizacao or "", -QUALIFICACAO_RANK.get(r.cd_qualificacaosocio, 99)),
-            reverse=True,
-        )
-        ativo = any(r.dt_ultimaatualizacao == mes_atual for r in registros_ord)
-
-        # Deduplica snapshots mensais consecutivos com a mesma qualificação.
-        # A RF republica o mesmo registro todo mês sem troca de cargo — isso não é histórico real.
-        deduped = []
-        for rec in registros_ord:
-            if not deduped or deduped[-1].cd_qualificacaosocio != rec.cd_qualificacaosocio:
-                deduped.append(rec)
-        registros_ord = deduped
-        n = len(registros_ord)
-
-        # Inferir data de início de cada cargo:
-        # - Cargo mais antigo (índice n-1 na lista DESC): data real de entrada na empresa
-        # - Cargos mais recentes: mês seguinte ao fim do cargo anterior
-        # Isso evita mostrar a data de entrada na empresa para todos os cargos
-        start_dates = [None] * n
-        start_dates[n - 1] = _fmt_date(registros_ord[n - 1].dt_dataentradasociedade)
-        for i in range(n - 2, -1, -1):
-            prev_ultima = registros_ord[i + 1].dt_ultimaatualizacao
-            curr_ultima = registros_ord[i].dt_ultimaatualizacao
-            if not prev_ultima:
-                pass  # fica None
-            elif prev_ultima == curr_ultima:
-                # Troca de cargo dentro do mesmo ciclo mensal da RF
-                start_dates[i] = _fmt_mes(curr_ultima)
-            else:
-                candidate = _next_month(prev_ultima)
-                # Guard: se a data inferida for posterior ao último mês do próprio registro,
-                # "desde" ficaria depois de "saiu em" — usa o mês real da última aparição.
-                cand_ym = f"{candidate[3:7]}-{candidate[:2]}" if len(candidate) == 7 else ""
-                if cand_ym > (curr_ultima or ""):
-                    start_dates[i] = _fmt_mes(curr_ultima) if curr_ultima else None
-                else:
-                    start_dates[i] = candidate
-
-        qualificacao_atual = None
-        qualificacoes_anteriores = []
-
-        for i, r in enumerate(registros_ord):
-            is_current = r.dt_ultimaatualizacao == mes_atual
-            item = {
-                "codigo":       r.cd_qualificacaosocio,
-                "descricao":    _qual_desc(r.cd_qualificacaosocio),
-                "data_entrada": start_dates[i],
-                "saiu_em":      None if is_current else _fmt_mes(r.dt_ultimaatualizacao),
-            }
-            if qualificacao_atual is None:
-                qualificacao_atual = item
-            else:
-                qualificacoes_anteriores.append(item)
-
-        ref = registros_ord[0]
-        pessoa = {
-            "nome_socio":               nome,
-            "cpf_cnpj_socio":           cpf,
-            "identificador":            IDENTIFICADOR_SOCIO.get(ref.cd_identificadorsocio, ref.cd_identificadorsocio),
-            "faixa_etaria":             FAIXA_ETARIA.get(ref.cd_faixaetaria, ref.cd_faixaetaria),
-            "ativo":                    ativo,
-            "qualificacao_atual":       qualificacao_atual,
-            "qualificacoes_anteriores": qualificacoes_anteriores,
-        }
-        (ativos if ativo else inativos).append(pessoa)
+        pessoa = _processar_grupo_socio(cpf, nome, registros, mes_atual)
+        if pessoa["ativo"]:
+            ativos.append(pessoa)
+        else:
+            inativos.append(pessoa)
 
     def _rank(p: dict) -> int:
         qa = p.get("qualificacao_atual")

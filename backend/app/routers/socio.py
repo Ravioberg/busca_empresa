@@ -43,8 +43,31 @@ def perfil_socio(
 
 
 @router.get(
-    "/busca", 
-    response_model=ListaResultados[SocioListItem], 
+    "/grafo",
+    responses={404: {"description": "Sócio não encontrado"}, 422: {"description": "Erro de validação"}}
+)
+def grafo_socio(
+    cpf: Annotated[str | None, Query(min_length=3)] = None,
+    nome: Annotated[str | None, Query(min_length=2)] = None,
+    # Profundidade de expansão (saltos) a partir do sócio raiz
+    profundidade: Annotated[int, Query(ge=1, le=4)] = 2,
+    db: Session = Depends(get_db),
+):
+    """
+    Grafo de rede societária (nós planos + arestas) por expansão BFS de N saltos
+    a partir do sócio. Sócio → empresas → sócios → empresas → ... (até N).
+    """
+    if not cpf and not nome:
+        raise HTTPException(status_code=422, detail="Informe 'cpf' ou 'nome'.")
+    resultado = crud.get_grafo_rede(db, cpf=cpf, nome=nome, profundidade=profundidade)
+    if not resultado:
+        raise HTTPException(status_code=404, detail="Sócio não encontrado.")
+    return resultado
+
+
+@router.get(
+    "/busca",
+    response_model=ListaResultados[SocioListItem],
     responses={422: {"description": "Erro de validação"}}
 )
 def busca_socio(

@@ -444,6 +444,217 @@ def get_empresa_rede(db: Session, cnpj: str) -> dict | None:
     return {"name": nome_raiz, "value": "root", "children": children}
 
 
+# ── Grafo de rede societária (BFS até N saltos) ─────────────────────────────────
+# Categorias com índice fixo — o frontend mapeia cor por índice.
+GRAFO_CATEGORIAS = [
+    {"name": "Empresa Ativa"},          # 0
+    {"name": "Empresa Suspensa"},       # 1
+    {"name": "Empresa Inapta"},         # 2
+    {"name": "Empresa Baixada/Nula"},   # 3
+    {"name": "Sócio atual"},            # 4
+    {"name": "Ex-sócio"},               # 5
+]
+_SIT_TO_CAT = {"02": 0, "03": 1, "04": 2, "08": 3, "01": 3}
+_ENCERRADAS_GRAFO = ("01", "08")
+_GRAFO_NODE_CAP = 600
+_GRAFO_QUERY_LIMIT = 3000
+
+
+def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
+                   nome: str | None = None, profundidade: int = 2) -> dict | None:
+    """Grafo de rede societária por expansão BFS até `profundidade` saltos.
+
+    Bipartido: nós de Empresa e de Sócio; aresta = vínculo sócio↔empresa.
+    Parte de uma empresa (cnpj) ou de um sócio (cpf+nome). Estrutura plana
+    (nodes/links) para representar ciclos — diferente da árvore de get_empresa_rede.
+    """
+    _load_cache(db)
+    mes_atual = _get_mes_atual(db)
+    profundidade = max(1, min(4, int(profundidade)))
+
+    nodes: dict[str, dict] = {}
+    links: list[dict] = []
+    link_seen: set = set()
+
+    def add_empresa(cb, razao, dv, sit, sit_esp=None, is_root=False):
+        nid = "e:" + cb
+        if nid in nodes:
+            return nid
+        if not is_root and len(nodes) >= _GRAFO_NODE_CAP:
+            return None
+        _, fmt = _fmt_cnpj(cb, "0001", dv or "")
+        nodes[nid] = {
+            "id":            nid,
+            "name":          _strip_situacao_especial(razao, sit_esp) or cb,
+            "tipo":          "empresa",
+            "cnpj_basico":   cb,
+            "cnpj_completo": cb + "0001" + (dv or ""),
+            "cnpj_formatado": fmt,
+            "category":      _SIT_TO_CAT.get(sit, 3),
+            "situacao":      SITUACAO.get(sit, "—"),
+            "is_root":       is_root,
+        }
+        return nid
+
+    def add_socio(cpf_s, nome_s, ativo, is_root=False):
+        nid = "s:" + (cpf_s or "") + "|" + (nome_s or "")
+        if nid in nodes:
+            if ativo and nodes[nid]["category"] == 5:
+                nodes[nid]["category"] = 4  # promove ex → atual se houver vínculo atual
+            return nid
+        if not is_root and len(nodes) >= _GRAFO_NODE_CAP:
+            return None
+        nodes[nid] = {
+            "id":       nid,
+            "name":     nome_s or "—",
+            "tipo":     "socio",
+            "cpf":      cpf_s,
+            "category": 4 if ativo else 5,
+            "is_root":  is_root,
+        }
+        return nid
+
+    def add_link(sid, eid, ativo):
+        if not sid or not eid:
+            return
+        k = (sid, eid)
+        if k in link_seen:
+            return
+        link_seen.add(k)
+        links.append({"source": sid, "target": eid, "ativo": bool(ativo)})
+
+    visited_emp: set = set()
+    visited_soc: set = set()
+    frontier_emp: list = []
+    frontier_soc: list = []
+    raiz_id = None
+
+    # ── Raiz ──
+    if cnpj:
+        cb = re.sub(r"\D", "", cnpj)[:8]
+        emp = db.query(Empresa).filter(Empresa.cd_cnpjbasico == cb).first()
+        est = db.query(Estabelecimento).filter(
+            Estabelecimento.cd_cnpjbasico == cb,
+            Estabelecimento.cd_cnpjordem == "0001",
+        ).first()
+        if not emp and not est:
+            return None
+        raiz_id = add_empresa(cb, emp.nm_razaosocial if emp else cb,
+                              est.cd_cnpjdv if est else "",
+                              est.cd_situacaocadastral if est else None,
+                              sit_esp=est.nm_situacaoespecial if est else None, is_root=True)
+        visited_emp.add(cb)
+        frontier_emp = [cb]
+    else:
+        nome_up = (nome or "").upper()
+        if cpf:
+            cpf_clean = re.sub(r"\D", "", cpf)
+            row = db.execute(text("""
+                SELECT cd_cpfcnpjsocio, nm_nomesociorazaosocial FROM socio
+                WHERE nm_nomesociorazaosocial = :nome AND cd_cpfcnpjsocio LIKE :cpf
+                LIMIT 1
+            """), {"nome": nome_up, "cpf": f"%{cpf_clean}%"}).fetchone()
+        else:
+            row = db.execute(text("""
+                SELECT cd_cpfcnpjsocio, nm_nomesociorazaosocial FROM socio
+                WHERE nm_nomesociorazaosocial = :nome LIMIT 1
+            """), {"nome": nome_up}).fetchone()
+        if not row:
+            return None
+        cpf_root, nome_root = row[0], row[1]
+        raiz_id = add_socio(cpf_root, nome_root, True, is_root=True)
+        visited_soc.add((cpf_root, nome_root))
+        frontier_soc = [(cpf_root, nome_root)]
+
+    # ── BFS ──
+    for _ in range(profundidade):
+        if len(nodes) >= _GRAFO_NODE_CAP:
+            break
+        next_emp, next_soc = [], []
+
+        # empresas → sócios
+        if frontier_emp:
+            batch = frontier_emp[:_GRAFO_NODE_CAP]
+            keys = {f"c{i}": cb for i, cb in enumerate(batch)}
+            in_clause = ",".join(f":c{i}" for i in range(len(batch)))
+            rows = db.execute(text(f"""
+                SELECT s.cd_cnpjbasico AS cb,
+                       s.nm_nomesociorazaosocial AS nome,
+                       s.cd_cpfcnpjsocio AS cpf,
+                       MAX(s.dt_ultimaatualizacao) AS max_dt,
+                       MAX(est.cd_situacaocadastral) AS sit
+                FROM socio s
+                LEFT JOIN estabelecimento est
+                    ON est.cd_cnpjbasico = s.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
+                WHERE s.cd_cnpjbasico IN ({in_clause})
+                  AND s.nm_nomesociorazaosocial IS NOT NULL
+                GROUP BY s.cd_cnpjbasico, s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio
+                LIMIT :lim
+            """), {**keys, "lim": _GRAFO_QUERY_LIMIT}).fetchall()
+            for r in rows:
+                ativo = (r.max_dt == mes_atual) and (r.sit not in _ENCERRADAS_GRAFO)
+                sid = add_socio(r.cpf, r.nome, ativo)
+                add_link(sid, "e:" + r.cb, ativo)
+                key = (r.cpf, r.nome)
+                if sid and key not in visited_soc:
+                    visited_soc.add(key)
+                    next_soc.append(key)
+
+        # sócios → empresas
+        if frontier_soc and len(nodes) < _GRAFO_NODE_CAP:
+            batch = frontier_soc[:_GRAFO_NODE_CAP]
+            binds: dict = {"lim": _GRAFO_QUERY_LIMIT}
+            vals = []
+            for i, (c, nm) in enumerate(batch):
+                binds[f"pc{i}"] = c
+                binds[f"pn{i}"] = nm
+                vals.append(f"(:pc{i}, :pn{i})")
+            rows = db.execute(text(f"""
+                WITH persons(cpf, nome) AS (VALUES {",".join(vals)})
+                SELECT s.cd_cpfcnpjsocio AS cpf,
+                       s.nm_nomesociorazaosocial AS nome,
+                       s.cd_cnpjbasico AS cb,
+                       MAX(s.dt_ultimaatualizacao) AS max_dt,
+                       MAX(e.nm_razaosocial) AS razao,
+                       MAX(est.cd_cnpjdv) AS dv,
+                       MAX(est.cd_situacaocadastral) AS sit,
+                       MAX(est.nm_situacaoespecial) AS sit_esp
+                FROM socio s
+                JOIN persons p
+                    ON s.nm_nomesociorazaosocial = p.nome
+                   AND s.cd_cpfcnpjsocio IS p.cpf
+                LEFT JOIN empresa e ON e.cd_cnpjbasico = s.cd_cnpjbasico
+                LEFT JOIN estabelecimento est
+                    ON est.cd_cnpjbasico = s.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
+                GROUP BY s.cd_cpfcnpjsocio, s.nm_nomesociorazaosocial, s.cd_cnpjbasico
+                LIMIT :lim
+            """), binds).fetchall()
+            for r in rows:
+                ativo = (r.max_dt == mes_atual) and (r.sit not in _ENCERRADAS_GRAFO)
+                eid = add_empresa(r.cb, r.razao, r.dv, r.sit, sit_esp=r.sit_esp)
+                sid = "s:" + (r.cpf or "") + "|" + (r.nome or "")
+                if sid in nodes:
+                    if ativo and nodes[sid]["category"] == 5:
+                        nodes[sid]["category"] = 4
+                    add_link(sid, eid, ativo)
+                if eid and r.cb not in visited_emp:
+                    visited_emp.add(r.cb)
+                    next_emp.append(r.cb)
+
+        frontier_emp, frontier_soc = next_emp, next_soc
+        if not frontier_emp and not frontier_soc:
+            break
+
+    return {
+        "raiz":         raiz_id,
+        "nodes":        list(nodes.values()),
+        "links":        links,
+        "categories":   GRAFO_CATEGORIAS,
+        "profundidade": profundidade,
+        "truncado":     len(nodes) >= _GRAFO_NODE_CAP,
+    }
+
+
 # ── Busca empresa por nome ────────────────────────────────────────────────────
 
 def _fts_empresa_exists(db: Session) -> bool:

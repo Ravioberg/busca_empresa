@@ -292,7 +292,7 @@ function CnaeGroup({ titulo, items, cor }) {
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
-export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, onVerSocio }) {
+export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, onVerSocio, onAbrirGrafo }) {
   const [perfil, setPerfil]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro]       = useState(null);
@@ -542,6 +542,17 @@ export default function ResultadoSocio({ socioInicial, onVoltar, onVerEmpresa, o
               {/* Mapa de Relacionamentos */}
               <Section icon="hub" title="Mapa de Relacionamentos" defaultOpen={false}>
                 <div className="p-2">
+                  {onAbrirGrafo && (
+                    <div className="flex justify-end px-2 pb-2">
+                      <button
+                        onClick={() => onAbrirGrafo({ tipo: "socio", cpf: info.cpf, nome: info.nome, label: info.nome })}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">account_tree</span>
+                        Rede completa
+                      </button>
+                    </div>
+                  )}
                   <RedeSocio perfil={perfil} />
                 </div>
               </Section>

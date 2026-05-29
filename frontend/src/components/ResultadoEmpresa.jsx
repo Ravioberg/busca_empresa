@@ -280,7 +280,7 @@ function FilialTabela({ filiais, onVerEmpresa }) {
 }
 
 // ─── ResultadoEmpresa ─────────────────────────────────────────────────────────
-export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio, onVerEmpresa }) {
+export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio, onVerEmpresa, onAbrirGrafo }) {
   const [exInativos, setExInativos] = useState(false);
   const [redeAberta, setRedeAberta]   = useState(false);
   const [redeData,   setRedeData]     = useState(null);
@@ -616,21 +616,37 @@ export default function ResultadoEmpresa({ dados, onVoltar, onVerSocio, onVerEmp
               className="bg-white rounded-xl overflow-hidden"
               style={{ border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(15,23,42,0.04)" }}
             >
-              <button
-                onClick={toggleRede}
-                className="w-full px-5 py-3.5 flex justify-between items-center border-b transition-colors text-left"
+              <div
+                className="w-full px-5 py-3.5 flex justify-between items-center border-b"
                 style={{ background: "#f8fafc", borderColor: "#e2e8f0" }}
-                onMouseEnter={e => e.currentTarget.style.background = "#f1f5f9"}
-                onMouseLeave={e => e.currentTarget.style.background = "#f8fafc"}
               >
-                <h3 className="text-[13px] font-semibold flex items-center gap-2" style={{ color: "#0f172a" }}>
-                  <span className="material-symbols-outlined text-[17px]" style={{ color: "#0085ca" }}>hub</span>
-                  Mapa de Relacionamentos
-                </h3>
-                <span className="material-symbols-outlined text-[17px]" style={{ color: "#94a3b8" }}>
-                  {redeAberta ? "expand_less" : "expand_more"}
-                </span>
-              </button>
+                <button
+                  onClick={toggleRede}
+                  className="flex items-center gap-2 text-left transition-colors"
+                  onMouseEnter={e => e.currentTarget.style.opacity = "0.8"}
+                  onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                >
+                  <h3 className="text-[13px] font-semibold flex items-center gap-2" style={{ color: "#0f172a" }}>
+                    <span className="material-symbols-outlined text-[17px]" style={{ color: "#0085ca" }}>hub</span>
+                    Mapa de Relacionamentos
+                  </h3>
+                  <span className="material-symbols-outlined text-[17px]" style={{ color: "#94a3b8" }}>
+                    {redeAberta ? "expand_less" : "expand_more"}
+                  </span>
+                </button>
+                {onAbrirGrafo && (
+                  <button
+                    onClick={() => onAbrirGrafo({ tipo: "empresa", cnpj: dados.cnpj_completo || dados.cnpj_basico + "000100", label: dados.razao_social })}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors"
+                    style={{ background: "#eef4f9", color: "#0a5494", border: "1px solid #bfdbfe" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#dce9f5"}
+                    onMouseLeave={e => e.currentTarget.style.background = "#eef4f9"}
+                  >
+                    <span className="material-symbols-outlined text-[15px]">account_tree</span>
+                    Rede completa
+                  </button>
+                )}
+              </div>
               {redeAberta && (
                 <div className="p-2">
                   {redeLoading && (

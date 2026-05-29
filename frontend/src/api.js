@@ -118,6 +118,29 @@ export async function buscarEmpresaRede(cnpj) {
   return data;
 }
 
+export async function buscarGrafoEmpresa(cnpj, profundidade = 2) {
+  const cnpjLimpo = cnpj.replace(/\D/g, "");
+  const key = `grafoE:${cnpjLimpo}:${profundidade}`;
+  const cached = _cacheGet(key);
+  if (cached) return cached;
+  const data = await _get(`/api/v1/empresa/${cnpjLimpo}/grafo?profundidade=${profundidade}`, null);
+  if (data !== null) _cacheSet(key, data);
+  return data;
+}
+
+export async function buscarGrafoSocio(cpf, nome, profundidade = 2) {
+  const params = new URLSearchParams();
+  if (cpf) params.set("cpf", cpf.replace(/\D/g, ""));
+  if (nome) params.set("nome", nome);
+  params.set("profundidade", profundidade);
+  const key = `grafoS:${params.toString()}`;
+  const cached = _cacheGet(key);
+  if (cached) return cached;
+  const data = await _get(`/api/v1/socio/grafo?${params}`, null);
+  if (data !== null) _cacheSet(key, data);
+  return data;
+}
+
 export async function buscarSocioPorCpf(cpf, skip = 0, limit = 20, knownTotal = 0) {
   const cpfLimpo = cpf.replace(/\D/g, "");
   const key = `sc:${cpfLimpo}:${skip}:${limit}`;

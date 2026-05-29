@@ -8,12 +8,14 @@ import BuscaEmpresa from "./components/BuscaEmpresa";
 import BuscaSocio from "./components/BuscaSocio";
 import ResultadoEmpresa from "./components/ResultadoEmpresa";
 import ResultadoSocio from "./components/ResultadoSocio";
+import GrafoRede from "./components/GrafoRede";
 
 export default function App() {
   const [tela, setTela] = useState("home");
   const [telaAnterior, setTelaAnterior] = useState(null);
   const [empresaDetalhe, setEmpresaDetalhe] = useState(null);
   const [socioInicial, setSocioInicial] = useState(null);
+  const [grafoRaiz, setGrafoRaiz] = useState(null);
   const [loadingNav, setLoadingNav] = useState(false);
 
   function irPara(proxTela) {
@@ -47,6 +49,12 @@ export default function App() {
     setSocioInicial(item);
     setTelaAnterior(tela);
     setTela("resultado-socio");
+  }
+
+  function abrirGrafo(raiz) {
+    setGrafoRaiz(raiz);
+    setTelaAnterior(tela);
+    setTela("grafo-rede");
   }
 
   const mostrarSidebar = tela !== "login";
@@ -96,6 +104,7 @@ export default function App() {
             onVoltar={() => irPara(telaAnterior || "empresa")}
             onVerSocio={abrirSocio}
             onVerEmpresa={abrirEmpresa}
+            onAbrirGrafo={abrirGrafo}
           />
         )}
 
@@ -103,6 +112,16 @@ export default function App() {
           <ResultadoSocio
             socioInicial={socioInicial}
             onVoltar={() => irPara(telaAnterior || "socio")}
+            onVerEmpresa={abrirEmpresa}
+            onVerSocio={abrirSocio}
+            onAbrirGrafo={abrirGrafo}
+          />
+        )}
+
+        {tela === "grafo-rede" && grafoRaiz && (
+          <GrafoRede
+            raiz={grafoRaiz}
+            onVoltar={() => irPara(telaAnterior || "home")}
             onVerEmpresa={abrirEmpresa}
             onVerSocio={abrirSocio}
           />

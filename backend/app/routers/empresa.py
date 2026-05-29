@@ -56,6 +56,26 @@ def busca_rede(cnpj: str, db: Session = Depends(get_db)):
 
 
 @router.get(
+    "/{cnpj}/grafo",
+    responses={404: {"description": "CNPJ não encontrado"}}
+)
+def grafo_empresa(
+    cnpj: str,
+    # Profundidade de expansão (saltos) a partir da empresa raiz
+    profundidade: Annotated[int, Query(ge=1, le=4)] = 2,
+    db: Session = Depends(get_db),
+):
+    """
+    Grafo de rede societária (nós planos + arestas) por expansão BFS de N saltos
+    a partir da empresa. Empresa → sócios → empresas → sócios → ... (até N).
+    """
+    resultado = crud.get_grafo_rede(db, cnpj=cnpj, profundidade=profundidade)
+    if not resultado:
+        raise HTTPException(status_code=404, detail="CNPJ não encontrado.")
+    return resultado
+
+
+@router.get(
     "/{cnpj}", 
     response_model=EmpresaDetalhe, 
     responses={404: {"description": "CNPJ não encontrado na base"}}

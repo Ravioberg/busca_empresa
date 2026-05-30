@@ -14,31 +14,60 @@ const CAT_COLORS = [
 
 const PROFUNDIDADES = [1, 2, 3, 4];
 
-function montarOption(data) {
+// Conjunto de nós destacados: selecionados ∪ vizinhos diretos dos selecionados.
+function computeHighlight(selectedIds, links) {
+  const result = new Set(selectedIds);
+  if (selectedIds.size === 0) return result;
+  for (const l of links) {
+    if (selectedIds.has(l.source)) result.add(l.target);
+    if (selectedIds.has(l.target)) result.add(l.source);
+  }
+  return result;
+}
+
+function montarOption(data, selectedIds) {
   const small = data.nodes.length <= 55;
+  const noSelection = selectedIds.size === 0;
+  const highlightSet = noSelection ? null : computeHighlight(selectedIds, data.links);
 
-  const nodes = data.nodes.map((n) => ({
-    id: n.id,
-    name: n.name,
-    category: n.category,
-    symbol: n.tipo === "empresa" ? "roundRect" : "circle",
-    symbolSize: n.is_root ? 30 : n.tipo === "empresa" ? 17 : 12,
-    value: n.tipo === "empresa" ? n.situacao : (n.category === 4 ? "Sócio atual" : "Ex-sócio"),
-    label: { show: n.is_root || small },
-    itemStyle: n.is_root ? { borderColor: "#0a1f3d", borderWidth: 3 } : undefined,
-    _tipo: n.tipo,
-    _cnpj: n.cnpj_completo,
-    _cpf: n.cpf,
-    _nome: n.name,
-  }));
+  const nodes = data.nodes.map((n) => {
+    const isHighlight = noSelection || highlightSet.has(n.id);
+    const isSelected = selectedIds.has(n.id);
+    const baseBorder = n.is_root ? { borderColor: "#0a1f3d", borderWidth: 3 } : {};
+    const selectedBorder = isSelected
+      ? { borderColor: "#0085ca", borderWidth: 3, shadowBlur: 14, shadowColor: "rgba(0,133,202,0.55)" }
+      : {};
+    return {
+      id: n.id,
+      name: n.name,
+      category: n.category,
+      symbol: n.tipo === "empresa" ? "roundRect" : "circle",
+      symbolSize: n.is_root ? 30 : n.tipo === "empresa" ? 17 : 12,
+      value: n.tipo === "empresa" ? n.situacao : (n.category === 4 ? "Sócio atual" : "Ex-sócio"),
+      label: { show: n.is_root || small || isSelected },
+      itemStyle: {
+        ...baseBorder,
+        ...selectedBorder,
+        opacity: isHighlight ? 1 : 0.15,
+      },
+      _tipo: n.tipo,
+      _cnpj: n.cnpj_completo,
+      _cpf: n.cpf,
+      _nome: n.name,
+    };
+  });
 
-  const links = data.links.map((l) => ({
-    source: l.source,
-    target: l.target,
-    lineStyle: l.ativo
+  const links = data.links.map((l) => {
+    const isHighlight = noSelection || (highlightSet.has(l.source) && highlightSet.has(l.target));
+    const base = l.ativo
       ? { width: 1.2, opacity: 0.55 }
-      : { width: 1, opacity: 0.3, type: "dashed" },
-  }));
+      : { width: 1, opacity: 0.3, type: "dashed" };
+    return {
+      source: l.source,
+      target: l.target,
+      lineStyle: isHighlight ? base : { ...base, opacity: 0.05 },
+    };
+  });
 
   const categories = data.categories.map((c, i) => ({
     name: c.name,
@@ -68,7 +97,17 @@ function montarOption(data) {
       {
         type: "graph",
         layout: "force",
-        roam: true,
+        // Área de display = área onde o roam (pan/zoom) captura eventos.
+        // Defaults são ~15% de margem, criando uma "caixa interativa" pequena no centro.
+        // Zeramos os 4 lados para o roam funcionar em todo o canvas — a legenda
+        // renderiza por cima sem subtrair a área interativa.
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        // roam built-in do ECharts é limitado ao bbox dos nós — implementamos
+        // pan/zoom manualmente abaixo via zrender + dispatchAction.
+        roam: false,
         draggable: true,
         data: nodes,
         links,
@@ -87,7 +126,8 @@ function montarOption(data) {
           formatter: "{b}",
         },
         labelLayout: { hideOverlap: true },
-        scaleLimit: { min: 0.2, max: 5 },
+        // Range amplo de zoom — permite afastar muito (n=4 grande caber em tela) e aproximar bem.
+        scaleLimit: { min: 0.02, max: 20 },
         lineStyle: { color: "source", curveness: 0.12 },
       },
     ],
@@ -109,6 +149,11 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+
+  // Ref com links atualizados para o handler de clique (que é registrado uma vez por init).
+  const linksRef = useRef([]);
+  useEffect(() => { linksRef.current = data?.links || []; }, [data]);
 
   // Busca o grafo quando raiz ou profundidade mudam
   useEffect(() => {
@@ -135,14 +180,33 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
     return () => { cancel = true; };
   }, [raiz, profundidade]);
 
-  // Renderiza o gráfico
+  // Limpa seleção quando troca de grafo
+  useEffect(() => {
+    setSelectedIds(prev => prev.size === 0 ? prev : new Set());
+  }, [data]);
+
+  // Renderiza / re-inicializa o gráfico quando o dado muda
   useEffect(() => {
     if (!ref.current || !data) return;
     chartRef.current?.dispose();
     const chart = echarts.init(ref.current);
     chartRef.current = chart;
-    chart.setOption(montarOption(data));
+    chart.setOption(montarOption(data, selectedIds));
 
+    // Click único: marca/encadeia
+    chart.on("click", (p) => {
+      if (p.dataType !== "node") return;
+      const id = p.data.id;
+      setSelectedIds(prev => {
+        if (prev.size === 0) return new Set([id]);
+        if (prev.has(id)) return prev;
+        const hl = computeHighlight(prev, linksRef.current);
+        if (!hl.has(id)) return prev; // só permite encadear pelos vizinhos visíveis
+        return new Set([...prev, id]);
+      });
+    });
+
+    // Dblclick: abre a página da empresa/sócio
     chart.on("dblclick", (p) => {
       if (p.dataType !== "node") return;
       if (p.data._tipo === "empresa" && p.data._cnpj) {
@@ -152,19 +216,75 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
       }
     });
 
+    // ── Pan/zoom customizado (substitui roam built-in) ──────────────────────
+    // Usamos zrender + dispatchAction porque o roam built-in do ECharts só
+    // captura eventos perto dos nós, criando "zona morta" no resto do canvas.
+    const zr = chart.getZr();
+    let panning = false;
+    let lastX = 0, lastY = 0;
+
+    const onPanStart = (e) => {
+      // Se está em cima de um nó, deixa o ECharts cuidar (draggable de nó).
+      if (e.target) return;
+      panning = true;
+      lastX = e.offsetX;
+      lastY = e.offsetY;
+    };
+    const onPanMove = (e) => {
+      if (!panning) return;
+      const dx = e.offsetX - lastX;
+      const dy = e.offsetY - lastY;
+      lastX = e.offsetX;
+      lastY = e.offsetY;
+      chart.dispatchAction({ type: "graphRoam", dx, dy });
+    };
+    const onPanEnd = () => { panning = false; };
+
+    const onWheel = (e) => {
+      const native = e.event;
+      if (native && native.preventDefault) native.preventDefault();
+      const delta = native ? (native.deltaY ?? -native.wheelDelta ?? 0) : 0;
+      if (delta === 0) return;
+      const zoom = delta < 0 ? 1.15 : 0.87;
+      chart.dispatchAction({
+        type: "graphRoam",
+        zoom,
+        originX: e.offsetX,
+        originY: e.offsetY,
+      });
+    };
+
+    zr.on("mousedown",  onPanStart);
+    zr.on("mousemove",  onPanMove);
+    zr.on("mouseup",    onPanEnd);
+    zr.on("mousewheel", onWheel);
+    // Fallback: se soltar o mouse fora do canvas, encerra o pan.
+    const onDocMouseUp = () => { panning = false; };
+    document.addEventListener("mouseup", onDocMouseUp);
+
     const onResize = () => chart.resize();
     window.addEventListener("resize", onResize);
     return () => {
+      document.removeEventListener("mouseup", onDocMouseUp);
       window.removeEventListener("resize", onResize);
       chart.dispose();
+      chartRef.current = null;
     };
+  // selectedIds inicial é considerado apenas na primeira render; mudanças propagam pelo effect abaixo
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, onVerEmpresa, onVerSocio]);
+
+  // Atualiza apenas os estilos quando a seleção muda (sem reinit, preserva o layout do force)
+  useEffect(() => {
+    if (!chartRef.current || !data) return;
+    chartRef.current.setOption(montarOption(data, selectedIds));
+  }, [selectedIds, data]);
 
   const totalNos = data?.nodes?.length || 0;
   const totalLinks = data?.links?.length || 0;
 
   return (
-    <main className="flex-1 md:ml-52 bg-[#f7f9fc] min-h-screen flex flex-col">
+    <main className="md:ml-52 md:w-[calc(100%-13rem)] bg-[#f7f9fc] h-screen flex flex-col overflow-hidden">
       {/* Header */}
       <header
         className="sticky top-0 z-30 flex items-center justify-between px-8 h-14 bg-white/90 backdrop-blur-md border-b"
@@ -206,6 +326,18 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
         </div>
 
         <div className="flex items-center gap-3">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors"
+              style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#fee2e2")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "#fef2f2")}
+            >
+              <span className="material-symbols-outlined text-[14px]">close</span>
+              Limpar seleção ({selectedIds.size})
+            </button>
+          )}
           <span className="text-[12px] font-medium" style={{ color: "#64748b" }}>
             Conexões (saltos)
           </span>
@@ -250,11 +382,11 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
         {/* Dica */}
         {!loading && !erro && data && (
           <div
-            className="absolute top-3 left-3 px-3 py-1.5 rounded-lg text-[11px] flex items-center gap-1.5"
+            className="absolute top-3 left-3 px-3 py-1.5 rounded-lg text-[11px] flex items-center gap-1.5 pointer-events-none"
             style={{ background: "rgba(255,255,255,0.9)", border: "1px solid #e2e8f0", color: "#94a3b8" }}
           >
             <span className="material-symbols-outlined text-[13px]">touch_app</span>
-            Clique duplo num nó para abrir · arraste para reposicionar
+            Clique para marcar caminho · duplo-clique abre · arraste para mover
           </div>
         )}
       </div>

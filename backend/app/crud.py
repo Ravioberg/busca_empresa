@@ -480,8 +480,10 @@ GRAFO_CATEGORIAS = [
 ]
 _SIT_TO_CAT = {"02": 0, "03": 1, "04": 2, "08": 3, "01": 3}
 _ENCERRADAS_GRAFO = ("01", "08")
-_GRAFO_NODE_CAP = 600
-_GRAFO_QUERY_LIMIT = 3000
+# Cap por nó na expansão BFS — só corta hubs explosivos, não limita grafos normais.
+_GRAFO_PER_NODE_DEGREE_CAP = 150
+# Tamanho de chunk para IN/VALUES — abaixo do limite de parâmetros do SQLite (999).
+_GRAFO_QUERY_CHUNK = 400
 
 
 def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
@@ -489,8 +491,9 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
     """Grafo de rede societária por expansão BFS até `profundidade` saltos.
 
     Bipartido: nós de Empresa e de Sócio; aresta = vínculo sócio↔empresa.
-    Parte de uma empresa (cnpj) ou de um sócio (cpf+nome). Estrutura plana
-    (nodes/links) para representar ciclos — diferente da árvore de get_empresa_rede.
+    Sem cap global de nós — apenas um cap por nó para evitar que um "hub"
+    (pessoa/empresa com centenas de vínculos) sozinho exploda o frontier.
+    Queries são divididas em chunks para escalar até `n=4` em redes grandes.
     """
     _load_cache(db)
     mes_atual = _get_mes_atual(db)
@@ -499,13 +502,12 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
     nodes: dict[str, dict] = {}
     links: list[dict] = []
     link_seen: set = set()
+    nos_truncados: set = set()  # IDs de nós cuja expansão foi capada
 
     def add_empresa(cb, razao, dv, sit, sit_esp=None, is_root=False):
         nid = "e:" + cb
         if nid in nodes:
             return nid
-        if not is_root and len(nodes) >= _GRAFO_NODE_CAP:
-            return None
         _, fmt = _fmt_cnpj(cb, "0001", dv or "")
         nodes[nid] = {
             "id":            nid,
@@ -526,8 +528,6 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
             if ativo and nodes[nid]["category"] == 5:
                 nodes[nid]["category"] = 4  # promove ex → atual se houver vínculo atual
             return nid
-        if not is_root and len(nodes) >= _GRAFO_NODE_CAP:
-            return None
         nodes[nid] = {
             "id":       nid,
             "name":     nome_s or "—",
@@ -602,82 +602,104 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
 
     # ── BFS ──
     for _ in range(profundidade):
-        if len(nodes) >= _GRAFO_NODE_CAP:
-            break
         next_emp, next_soc = [], []
 
-        # empresas → sócios
+        # ── empresas → sócios (em chunks) ──
         if frontier_emp:
-            batch = frontier_emp[:_GRAFO_NODE_CAP]
-            keys = {f"c{i}": cb for i, cb in enumerate(batch)}
-            in_clause = ",".join(f":c{i}" for i in range(len(batch)))
-            rows = db.execute(text(f"""
-                SELECT s.cd_cnpjbasico AS cb,
-                       s.nm_nomesociorazaosocial AS nome,
-                       s.cd_cpfcnpjsocio AS cpf,
-                       MAX(s.dt_ultimaatualizacao) AS max_dt,
-                       MAX(est.cd_situacaocadastral) AS sit
-                FROM socio s
-                LEFT JOIN estabelecimento est
-                    ON est.cd_cnpjbasico = s.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
-                WHERE s.cd_cnpjbasico IN ({in_clause})
-                  AND s.nm_nomesociorazaosocial IS NOT NULL
-                GROUP BY s.cd_cnpjbasico, s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio
-                LIMIT :lim
-            """), {**keys, "lim": _GRAFO_QUERY_LIMIT}).fetchall()
-            for r in rows:
-                ativo = (r.max_dt == mes_atual) and (r.sit not in _ENCERRADAS_GRAFO)
-                sid = add_socio(r.cpf, r.nome, ativo)
-                add_link(sid, "e:" + r.cb, ativo)
-                key = (r.cpf, r.nome)
-                if sid and key not in visited_soc:
-                    visited_soc.add(key)
-                    next_soc.append(key)
+            rows_per_cb: dict[str, list] = {}
+            for start in range(0, len(frontier_emp), _GRAFO_QUERY_CHUNK):
+                chunk = frontier_emp[start:start + _GRAFO_QUERY_CHUNK]
+                keys = {f"c{i}": cb for i, cb in enumerate(chunk)}
+                in_clause = ",".join(f":c{i}" for i in range(len(chunk)))
+                rows = db.execute(text(f"""
+                    SELECT s.cd_cnpjbasico AS cb,
+                           s.nm_nomesociorazaosocial AS nome,
+                           s.cd_cpfcnpjsocio AS cpf,
+                           MAX(s.dt_ultimaatualizacao) AS max_dt,
+                           MAX(est.cd_situacaocadastral) AS sit
+                    FROM socio s
+                    LEFT JOIN estabelecimento est
+                        ON est.cd_cnpjbasico = s.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
+                    WHERE s.cd_cnpjbasico IN ({in_clause})
+                      AND s.nm_nomesociorazaosocial IS NOT NULL
+                    GROUP BY s.cd_cnpjbasico, s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio
+                """), keys).fetchall()
+                for r in rows:
+                    rows_per_cb.setdefault(r.cb, []).append(r)
 
-        # sócios → empresas
-        if frontier_soc and len(nodes) < _GRAFO_NODE_CAP:
-            batch = frontier_soc[:_GRAFO_NODE_CAP]
-            binds: dict = {"lim": _GRAFO_QUERY_LIMIT}
-            vals = []
-            for i, (c, nm) in enumerate(batch):
-                binds[f"pc{i}"] = c
-                binds[f"pn{i}"] = nm
-                vals.append(f"(:pc{i}, :pn{i})")
-            rows = db.execute(text(f"""
-                WITH persons(cpf, nome) AS (VALUES {",".join(vals)})
-                SELECT s.cd_cpfcnpjsocio AS cpf,
-                       s.nm_nomesociorazaosocial AS nome,
-                       s.cd_cnpjbasico AS cb,
-                       MAX(s.dt_ultimaatualizacao) AS max_dt,
-                       MAX(e.nm_razaosocial) AS razao,
-                       MAX(est.cd_cnpjdv) AS dv,
-                       MAX(est.cd_situacaocadastral) AS sit,
-                       MAX(est.nm_situacaoespecial) AS sit_esp
-                FROM socio s
-                JOIN persons p
-                    ON s.nm_nomesociorazaosocial = p.nome
-                   AND s.cd_cpfcnpjsocio IS p.cpf
-                LEFT JOIN empresa e ON e.cd_cnpjbasico = s.cd_cnpjbasico
-                LEFT JOIN estabelecimento est
-                    ON est.cd_cnpjbasico = s.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
-                GROUP BY s.cd_cpfcnpjsocio, s.nm_nomesociorazaosocial, s.cd_cnpjbasico
-                LIMIT :lim
-            """), binds).fetchall()
-            for r in rows:
-                ativo = (r.max_dt == mes_atual) and (r.sit not in _ENCERRADAS_GRAFO)
-                eid = add_empresa(r.cb, r.razao, r.dv, r.sit, sit_esp=r.sit_esp)
-                sid = "s:" + (r.cpf or "") + "|" + (r.nome or "")
-                if sid in nodes:
-                    if ativo and nodes[sid]["category"] == 5:
-                        nodes[sid]["category"] = 4
-                    add_link(sid, eid, ativo)
-                if eid and r.cb not in visited_emp:
-                    visited_emp.add(r.cb)
-                    next_emp.append(r.cb)
+            # Aplica cap por nó (ativos primeiro, depois ordem alfabética determinística)
+            for cb, rs in rows_per_cb.items():
+                if len(rs) > _GRAFO_PER_NODE_DEGREE_CAP:
+                    rs.sort(key=lambda r: (0 if (r.max_dt == mes_atual) else 1, r.nome or ""))
+                    rs = rs[:_GRAFO_PER_NODE_DEGREE_CAP]
+                    nos_truncados.add("e:" + cb)
+                for r in rs:
+                    ativo = (r.max_dt == mes_atual) and (r.sit not in _ENCERRADAS_GRAFO)
+                    sid = add_socio(r.cpf, r.nome, ativo)
+                    add_link(sid, "e:" + r.cb, ativo)
+                    key = (r.cpf, r.nome)
+                    if sid and key not in visited_soc:
+                        visited_soc.add(key)
+                        next_soc.append(key)
+
+        # ── sócios → empresas (em chunks) ──
+        if frontier_soc:
+            rows_per_socio: dict[tuple, list] = {}
+            for start in range(0, len(frontier_soc), _GRAFO_QUERY_CHUNK):
+                chunk = frontier_soc[start:start + _GRAFO_QUERY_CHUNK]
+                binds: dict = {}
+                vals = []
+                for i, (c, nm) in enumerate(chunk):
+                    binds[f"pc{i}"] = c
+                    binds[f"pn{i}"] = nm
+                    vals.append(f"(:pc{i}, :pn{i})")
+                rows = db.execute(text(f"""
+                    WITH persons(cpf, nome) AS (VALUES {",".join(vals)})
+                    SELECT s.cd_cpfcnpjsocio AS cpf,
+                           s.nm_nomesociorazaosocial AS nome,
+                           s.cd_cnpjbasico AS cb,
+                           MAX(s.dt_ultimaatualizacao) AS max_dt,
+                           MAX(e.nm_razaosocial) AS razao,
+                           MAX(est.cd_cnpjdv) AS dv,
+                           MAX(est.cd_situacaocadastral) AS sit,
+                           MAX(est.nm_situacaoespecial) AS sit_esp
+                    FROM socio s
+                    JOIN persons p
+                        ON s.nm_nomesociorazaosocial = p.nome
+                       AND s.cd_cpfcnpjsocio IS p.cpf
+                    LEFT JOIN empresa e ON e.cd_cnpjbasico = s.cd_cnpjbasico
+                    LEFT JOIN estabelecimento est
+                        ON est.cd_cnpjbasico = s.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
+                    GROUP BY s.cd_cpfcnpjsocio, s.nm_nomesociorazaosocial, s.cd_cnpjbasico
+                """), binds).fetchall()
+                for r in rows:
+                    rows_per_socio.setdefault((r.cpf, r.nome), []).append(r)
+
+            for (cpf_p, nome_p), rs in rows_per_socio.items():
+                if len(rs) > _GRAFO_PER_NODE_DEGREE_CAP:
+                    rs.sort(key=lambda r: (0 if (r.max_dt == mes_atual) else 1, r.razao or ""))
+                    rs = rs[:_GRAFO_PER_NODE_DEGREE_CAP]
+                    nos_truncados.add("s:" + (cpf_p or "") + "|" + (nome_p or ""))
+                for r in rs:
+                    ativo = (r.max_dt == mes_atual) and (r.sit not in _ENCERRADAS_GRAFO)
+                    eid = add_empresa(r.cb, r.razao, r.dv, r.sit, sit_esp=r.sit_esp)
+                    sid = "s:" + (r.cpf or "") + "|" + (r.nome or "")
+                    if sid in nodes:
+                        if ativo and nodes[sid]["category"] == 5:
+                            nodes[sid]["category"] = 4
+                        add_link(sid, eid, ativo)
+                    if eid and r.cb not in visited_emp:
+                        visited_emp.add(r.cb)
+                        next_emp.append(r.cb)
 
         frontier_emp, frontier_soc = next_emp, next_soc
         if not frontier_emp and not frontier_soc:
             break
+
+    # Marca nós cuja expansão foi capada (UI pode indicar visualmente)
+    for nid in nos_truncados:
+        if nid in nodes:
+            nodes[nid]["truncado_expansao"] = True
 
     return {
         "raiz":         raiz_id,
@@ -685,7 +707,7 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
         "links":        links,
         "categories":   GRAFO_CATEGORIAS,
         "profundidade": profundidade,
-        "truncado":     len(nodes) >= _GRAFO_NODE_CAP,
+        "truncado":     bool(nos_truncados),
     }
 
 

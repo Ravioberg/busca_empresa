@@ -32,3 +32,6 @@ frontend/.env.local
 # OS
 .DS_Store
 Thumbs.db
+
+# arquivos 
+Template_Relatorio_Projeto_IBM8942.docx

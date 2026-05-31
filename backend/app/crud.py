@@ -149,6 +149,30 @@ def _build_fts_match(nome_norm: str) -> str | None:
     return " ".join(palavras) if palavras else None
 
 
+def _cpf_mascarado_rf(valor: str | None) -> str | None:
+    """Converte CPF completo/trecho visível para o formato público da RF: ***123456**."""
+    digits = re.sub(r"\D", "", valor or "")
+    if len(digits) == 11:
+        meio = digits[3:9]
+    elif len(digits) == 6:
+        meio = digits
+    else:
+        return None
+    return f"***{meio}**"
+
+
+def _socio_list_item(nome: str | None, cpf: str | None, identificador: str | None, faixa: str | None) -> dict:
+    return {
+        "nome_socio":     nome,
+        "cpf_cnpj_socio": cpf,
+        "identificador":  IDENTIFICADOR_SOCIO.get(identificador, identificador),
+        "faixa_etaria":   FAIXA_ETARIA.get(faixa, faixa),
+        "n_ativas":       0,
+        "n_inaptas":      0,
+        "n_ex":           0,
+    }
+
+
 def _parse_cnaes_secundarios(raw: str | None) -> list:
     if not raw or not raw.strip():
         return []
@@ -548,12 +572,22 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
     else:
         nome_up = (nome or "").upper()
         if cpf:
-            cpf_clean = re.sub(r"\D", "", cpf)
-            row = db.execute(text("""
-                SELECT cd_cpfcnpjsocio, nm_nomesociorazaosocial FROM socio
-                WHERE nm_nomesociorazaosocial = :nome AND cd_cpfcnpjsocio LIKE :cpf
-                LIMIT 1
-            """), {"nome": nome_up, "cpf": f"%{cpf_clean}%"}).fetchone()
+            cpf_mask = _cpf_mascarado_rf(cpf)
+            if not cpf_mask:
+                return None
+            if nome_up:
+                row = db.execute(text("""
+                    SELECT cd_cpfcnpjsocio, nm_nomesociorazaosocial FROM socio
+                    WHERE nm_nomesociorazaosocial = :nome AND cd_cpfcnpjsocio = :cpf
+                    LIMIT 1
+                """), {"nome": nome_up, "cpf": cpf_mask}).fetchone()
+            else:
+                row = db.execute(text("""
+                    SELECT cd_cpfcnpjsocio, nm_nomesociorazaosocial FROM socio
+                    WHERE cd_cpfcnpjsocio = :cpf
+                    ORDER BY nm_nomesociorazaosocial
+                    LIMIT 1
+                """), {"cpf": cpf_mask}).fetchone()
         else:
             row = db.execute(text("""
                 SELECT cd_cpfcnpjsocio, nm_nomesociorazaosocial FROM socio
@@ -658,15 +692,21 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
 # ── Busca empresa por nome ────────────────────────────────────────────────────
 
 def _fts_empresa_exists(db: Session) -> bool:
-    return db.execute(text(
+    exists = db.execute(text(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='fts_empresa'"
     )).fetchone() is not None
+    if not exists:
+        return False
+    return db.execute(text("SELECT 1 FROM fts_empresa LIMIT 1")).fetchone() is not None
 
 
 def _fts_socio_exists(db: Session) -> bool:
-    return db.execute(text(
+    exists = db.execute(text(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='fts_socio'"
     )).fetchone() is not None
+    if not exists:
+        return False
+    return db.execute(text("SELECT 1 FROM fts_socio LIMIT 1")).fetchone() is not None
 
 
 def busca_empresa_nome(db: Session, nome: str, skip: int = 0, limit: int = 20, known_total: int = 0) -> dict:
@@ -920,11 +960,11 @@ LIMIT :limit OFFSET :skip\
 
 def busca_socio_nome(db: Session, nome: str, skip: int = 0, limit: int = 20, known_total: int = 0) -> dict:
     _load_cache(db)
-    mes_atual = _get_mes_atual(db)
     nome_norm = _normalizar(nome)
     match = _build_fts_match(nome_norm)
 
     if is_postgres():
+        mes_atual = _get_mes_atual(db)
         termo = f"%{nome}%"
         if known_total > 0:
             total = known_total
@@ -945,58 +985,22 @@ def busca_socio_nome(db: Session, nome: str, skip: int = 0, limit: int = 20, kno
             {"termo": termo, "nome": nome, "mes_atual": mes_atual, "limit": limit, "skip": skip}).fetchall()
 
     elif match is not None and _fts_socio_exists(db):
-        if known_total > 0:
-            total = known_total
-        else:
-            total = db.execute(text("""
-                WITH fts AS (SELECT rowid_ref FROM fts_socio WHERE fts_socio MATCH :match LIMIT 100000)
-                SELECT COUNT(DISTINCT s.nm_nomesociorazaosocial || '|' || COALESCE(s.cd_cpfcnpjsocio,''))
-                FROM socio s JOIN fts ON s.id = fts.rowid_ref
-            """), {"match": match}).scalar() or 0
-        first_word = next((w for w in nome_norm.split() if len(w) >= 3), nome_norm)
-
-        # ── Phase 1: página de pessoas únicas com ranking ─────────────────
-        # O LIMIT 50000 aqui serve apenas para encontrar QUEM aparece na página —
-        # não precisa ser exato. As contagens de empresas são calculadas na Phase 2.
         page_persons = db.execute(text("""
-            WITH prefix_raw AS (
-                SELECT nm_nomesociorazaosocial, cd_cpfcnpjsocio,
-                       cd_faixaetaria, cd_identificadorsocio,
-                       CASE
-                           WHEN nm_nomesociorazaosocial = :nome_norm             THEN 0
-                           WHEN nm_nomesociorazaosocial LIKE :nome_norm || ' %'  THEN 1
-                           WHEN nm_nomesociorazaosocial LIKE :nome_norm || '%'   THEN 2
-                           WHEN nm_nomesociorazaosocial LIKE :first_word || ' %' THEN 3
-                           ELSE 4
-                       END AS tier
-                FROM socio
-                WHERE nm_nomesociorazaosocial LIKE :first_word || '%'
-                LIMIT 50000
-            ),
-            prefix AS (
-                SELECT nm_nomesociorazaosocial, cd_cpfcnpjsocio,
-                       MAX(cd_faixaetaria)        AS cd_faixaetaria,
-                       MAX(cd_identificadorsocio) AS cd_identificadorsocio,
-                       MIN(tier) AS tier
-                FROM prefix_raw
-                GROUP BY nm_nomesociorazaosocial, cd_cpfcnpjsocio
-            ),
-            fts_raw AS (
+            WITH fts_raw AS (
                 SELECT rowid_ref FROM fts_socio WHERE fts_socio MATCH :match LIMIT 3000
             ),
-            fts_other AS (
+            all_persons AS (
                 SELECT s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio,
                        MAX(s.cd_faixaetaria)        AS cd_faixaetaria,
                        MAX(s.cd_identificadorsocio) AS cd_identificadorsocio,
-                       5 AS tier
+                       CASE
+                           WHEN s.nm_nomesociorazaosocial = :nome_norm            THEN 0
+                           WHEN s.nm_nomesociorazaosocial LIKE :nome_norm || ' %' THEN 1
+                           WHEN s.nm_nomesociorazaosocial LIKE :nome_norm || '%'  THEN 2
+                           ELSE 3
+                       END AS tier
                 FROM socio s JOIN fts_raw f ON s.id = f.rowid_ref
-                WHERE s.nm_nomesociorazaosocial NOT LIKE :first_word || '%'
                 GROUP BY s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio
-            ),
-            all_persons AS (
-                SELECT * FROM prefix
-                UNION ALL
-                SELECT * FROM fts_other
             )
             SELECT nm_nomesociorazaosocial, cd_cpfcnpjsocio,
                    MAX(cd_faixaetaria)        AS cd_faixaetaria,
@@ -1006,68 +1010,25 @@ def busca_socio_nome(db: Session, nome: str, skip: int = 0, limit: int = 20, kno
             GROUP BY nm_nomesociorazaosocial, cd_cpfcnpjsocio
             ORDER BY best_tier, nm_nomesociorazaosocial
             LIMIT :limit OFFSET :skip
-        """), {"match": match, "nome_norm": nome_norm, "first_word": first_word,
-               "limit": limit, "skip": skip}).fetchall()
+        """), {"match": match, "nome_norm": nome_norm, "limit": limit, "skip": skip}).fetchall()
 
         if not page_persons:
-            return {"total": total, "resultados": []}
+            return {"total": 0, "resultados": []}
 
-        # ── Phase 2: contagens EXATAS para as pessoas da página ───────────
-        # Lookup por (nome, cpf) exato — sem LIMIT, sem truncamento de histórico.
-        bind2: dict = {"mes_atual": mes_atual}
-        val_parts: list = []
-        for i, r in enumerate(page_persons):
-            bind2[f"n{i}"] = r.nm_nomesociorazaosocial
-            bind2[f"c{i}"] = r.cd_cpfcnpjsocio
-            val_parts.append(f"(:n{i}, :c{i})")
-
-        count_rows = db.execute(text(f"""
-            WITH persons(nome, cpf) AS (VALUES {", ".join(val_parts)}),
-            empresa_data AS (
-                SELECT s.nm_nomesociorazaosocial AS nome,
-                       s.cd_cpfcnpjsocio        AS cpf,
-                       s.cd_cnpjbasico,
-                       MAX(s.dt_ultimaatualizacao)   AS max_dt,
-                       MAX(est.cd_situacaocadastral) AS situacao
-                FROM socio s
-                JOIN persons p
-                    ON s.nm_nomesociorazaosocial = p.nome
-                   AND s.cd_cpfcnpjsocio IS p.cpf
-                LEFT JOIN estabelecimento est
-                    ON s.cd_cnpjbasico = est.cd_cnpjbasico
-                   AND est.cd_cnpjordem = '0001'
-                GROUP BY s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio, s.cd_cnpjbasico
+        rows_result = [
+            _socio_list_item(
+                p.nm_nomesociorazaosocial,
+                p.cd_cpfcnpjsocio,
+                p.cd_identificadorsocio,
+                p.cd_faixaetaria,
             )
-            SELECT nome, cpf,
-                   COUNT(DISTINCT CASE WHEN max_dt =  :mes_atual
-                                        AND COALESCE(situacao,'01') NOT IN ('01','03','04','08')
-                                        THEN cd_cnpjbasico END) AS n_ativas,
-                   COUNT(DISTINCT CASE WHEN max_dt =  :mes_atual
-                                        AND COALESCE(situacao,'01') IN ('03','04')
-                                        THEN cd_cnpjbasico END) AS n_inaptas,
-                   COUNT(DISTINCT CASE WHEN max_dt != :mes_atual
-                                        OR  COALESCE(situacao,'08') IN ('01','08')
-                                        THEN cd_cnpjbasico END) AS n_ex
-            FROM empresa_data
-            GROUP BY nome, cpf
-        """), bind2).fetchall()
-
-        counts_map = {(r.nome, r.cpf): r for r in count_rows}
-        rows_result = []
-        for p in page_persons:
-            c = counts_map.get((p.nm_nomesociorazaosocial, p.cd_cpfcnpjsocio))
-            rows_result.append({
-                "nome_socio":     p.nm_nomesociorazaosocial,
-                "cpf_cnpj_socio": p.cd_cpfcnpjsocio,
-                "identificador":  IDENTIFICADOR_SOCIO.get(p.cd_identificadorsocio, p.cd_identificadorsocio),
-                "faixa_etaria":   FAIXA_ETARIA.get(p.cd_faixaetaria, p.cd_faixaetaria),
-                "n_ativas":  c.n_ativas  if c else 0,
-                "n_inaptas": c.n_inaptas if c else 0,
-                "n_ex":      c.n_ex      if c else 0,
-            })
+            for p in page_persons
+        ]
+        total = known_total if known_total > 0 else (10000 if len(rows_result) == limit else skip + len(rows_result))
         return {"total": total, "resultados": rows_result}
 
     else:
+        mes_atual = _get_mes_atual(db)
         termo = f"%{nome.lower()}%"
         if known_total > 0:
             total = known_total
@@ -1092,31 +1053,43 @@ def busca_socio_nome(db: Session, nome: str, skip: int = 0, limit: int = 20, kno
 
 def busca_socio_cpf(db: Session, cpf: str, skip: int = 0, limit: int = 20, known_total: int = 0) -> dict:
     _load_cache(db)
-    mes_atual = _get_mes_atual(db)
-    cpf_clean = re.sub(r"\D", "", cpf)
-    like_op = "ILIKE" if is_postgres() else "LIKE"
-
-    termo1 = f"%{cpf_clean}%"
-    cpf_sem3 = cpf_clean[3:] if len(cpf_clean) > 3 else cpf_clean
-    termo2 = f"%{cpf_sem3}%"
-    where = f"(cd_cpfcnpjsocio {like_op} :t1 OR cd_cpfcnpjsocio {like_op} :t2)"
+    cpf_mask = _cpf_mascarado_rf(cpf)
+    if not cpf_mask:
+        return {"total": 0, "resultados": []}
 
     if known_total > 0:
         total = known_total
     else:
-        total = db.execute(text(f"""
+        total = db.execute(text("""
             SELECT COUNT(*) FROM (
                 SELECT DISTINCT nm_nomesociorazaosocial, cd_cpfcnpjsocio
-                FROM socio WHERE {where} LIMIT 10001
+                FROM socio WHERE cd_cpfcnpjsocio = :cpf LIMIT 10001
             ) t
-        """), {"t1": termo1, "t2": termo2}).scalar() or 0
+        """), {"cpf": cpf_mask}).scalar() or 0
 
-    rows = db.execute(text(_SOCIO_PESSOA_SQL.format(
-        where=f"(cd_cpfcnpjsocio {like_op} :t1 OR cd_cpfcnpjsocio {like_op} :t2)",
-        order="ORDER BY nm_nomesociorazaosocial")),
-        {"t1": termo1, "t2": termo2, "mes_atual": mes_atual, "limit": limit, "skip": skip}).fetchall()
+    rows = db.execute(text("""
+        SELECT nm_nomesociorazaosocial, cd_cpfcnpjsocio,
+               MAX(cd_faixaetaria)        AS cd_faixaetaria,
+               MAX(cd_identificadorsocio) AS cd_identificadorsocio
+        FROM socio
+        WHERE cd_cpfcnpjsocio = :cpf
+        GROUP BY nm_nomesociorazaosocial, cd_cpfcnpjsocio
+        ORDER BY nm_nomesociorazaosocial
+        LIMIT :limit OFFSET :skip
+    """), {"cpf": cpf_mask, "limit": limit, "skip": skip}).fetchall()
 
-    return {"total": total, "resultados": _socio_pessoa_to_list(rows)}
+    return {
+        "total": total,
+        "resultados": [
+            _socio_list_item(
+                r.nm_nomesociorazaosocial,
+                r.cd_cpfcnpjsocio,
+                r.cd_identificadorsocio,
+                r.cd_faixaetaria,
+            )
+            for r in rows
+        ],
+    }
 
 
 # ── Perfil completo de sócio ──────────────────────────────────────────────────
@@ -1129,21 +1102,23 @@ def get_perfil_socio(db: Session, cpf: str | None = None, nome: str | None = Non
     # Chave forte: nome+cpf sempre que ambos disponíveis — impede mistura de homônimos.
     nome_exact = None
     if cpf and nome:
-        cpf_clean  = re.sub(r"\D", "", cpf)
+        cpf_mask = _cpf_mascarado_rf(cpf)
+        if not cpf_mask:
+            return None
         nome_exact = nome.upper()
         find_where   = (f"s.nm_nomesociorazaosocial = :nome_exact "
-                        f"AND s.cd_cpfcnpjsocio {like_op} :person_id")
+                        f"AND s.cd_cpfcnpjsocio = :person_id")
         person_where = find_where
-        person_id  = f"%{cpf_clean}%"
+        person_id  = cpf_mask
         person_id2 = person_id
     elif cpf:
-        cpf_clean  = re.sub(r"\D", "", cpf)
-        cpf_sem3   = cpf_clean[3:] if len(cpf_clean) > 3 else cpf_clean
-        find_where   = (f"(s.cd_cpfcnpjsocio {like_op} :person_id "
-                        f"OR s.cd_cpfcnpjsocio {like_op} :person_id2)")
-        person_where = f"s.cd_cpfcnpjsocio {like_op} :person_id"
-        person_id  = f"%{cpf_clean}%"
-        person_id2 = f"%{cpf_sem3}%"
+        cpf_mask = _cpf_mascarado_rf(cpf)
+        if not cpf_mask:
+            return None
+        find_where   = "s.cd_cpfcnpjsocio = :person_id"
+        person_where = find_where
+        person_id  = cpf_mask
+        person_id2 = person_id
     else:
         find_where   = "s.nm_nomesociorazaosocial = :person_id"
         person_where = find_where

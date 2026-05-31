@@ -5,7 +5,12 @@ const LIMIT = 20;
 
 function ehCpf(v) {
   const d = v.replace(/[\s.\-]/g, "");
-  return /^\d+$/.test(d) && d.length >= 3 && d.length <= 11;
+  return /^\d+$/.test(d) && d.length >= 6 && d.length <= 11;
+}
+
+function cpfEmDigitacao(v) {
+  const d = v.replace(/[\s.\-]/g, "");
+  return /^\d+$/.test(d) && d.length > 0 && d.length < 6;
 }
 
 function lerRecentes() {
@@ -35,6 +40,11 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
   useEffect(() => {
     const t = termo.trim();
     if (t.length < 3) {
+      setLista(null);
+      setErro(null);
+      return;
+    }
+    if (cpfEmDigitacao(t)) {
       setLista(null);
       setErro(null);
       return;
@@ -94,6 +104,7 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
   }
 
   const total = lista?.total || 0;
+  const totalAproximado = total >= 10000;
   const totalPags = Math.ceil(total / LIMIT);
 
   return (
@@ -152,7 +163,7 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
               <input
                 ref={inputRef}
                 className="w-full h-full pl-[62px] pr-16 bg-transparent border-none outline-none text-[16px] text-[#0f172a] placeholder:text-[#94a3b8]"
-                placeholder="Digite o CPF ou Nome do Sócio..."
+                placeholder="Digite o CPF completo, 6 dígitos visíveis ou Nome do Sócio..."
                 value={termo}
                 onChange={(e) => setTermo(e.target.value)}
                 onFocus={e => e.currentTarget.closest("div").style.borderColor = "#0085ca"}
@@ -215,7 +226,10 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
         {lista && (
           <div className={`mt-8 max-w-3xl mx-auto transition-opacity duration-150 ${loading ? "opacity-50" : "opacity-100"}`}>
             <p className="text-body-sm text-on-surface-variant mb-4">
-              {total.toLocaleString("pt-BR")} resultado{total !== 1 ? "s" : ""} para &ldquo;{ultimoTermo}&rdquo;
+              {totalAproximado
+                ? `Mais de ${total.toLocaleString("pt-BR")} resultados`
+                : `${total.toLocaleString("pt-BR")} resultado${total !== 1 ? "s" : ""}`}{" "}
+              para &ldquo;{ultimoTermo}&rdquo;
             </p>
             <div className="flex flex-col gap-3">
               {lista.resultados.map((s, i) => (

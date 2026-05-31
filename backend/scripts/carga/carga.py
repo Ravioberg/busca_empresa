@@ -25,6 +25,7 @@ import time
 import zipfile
 import argparse
 import ctypes
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -43,10 +44,22 @@ load_dotenv()
 BASE_DIR     = Path(__file__).parent.parent.parent # Raiz do backend
 load_dotenv(BASE_DIR / ".env")
 
-DADOS_BRUTOS = Path(os.getenv("DADOS_BRUTOS", str(BASE_DIR / "dados-brutos"))).resolve()
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'cnpj.db'}")
+def _resolve_path_env(value: str, default_base: Path) -> Path:
+    path = Path(value)
+    return path.resolve() if path.is_absolute() else (default_base / path).resolve()
+
+
+def _resolve_database_url(value: str) -> str:
+    if value.startswith("sqlite:///"):
+        raw_path = value.replace("sqlite:///", "", 1)
+        db_path = _resolve_path_env(raw_path, BASE_DIR)
+        return f"sqlite:///{db_path}"
+    return value
+
+
+DADOS_BRUTOS = _resolve_path_env(os.getenv("DADOS_BRUTOS", "../dados-brutos"), BASE_DIR)
+DATABASE_URL = _resolve_database_url(os.getenv("DATABASE_URL", "./cnpj.db"))
 CHUNK_SIZE   = 100_000
-MES_DOMINIOS = "2026-04"
 
 # ---------------------------------------------------------------------------
 # Colunas por tabela (layout oficial RF — cnpj-metadados.pdf)
@@ -317,12 +330,12 @@ def _configurar_sqlite(engine):
 
 
 INDEXES_POR_TABELA = {
-    "empresa":         [("ix_emp_razao",    "ON empresa(nm_razaosocial)")],
-    "estabelecimento": [("ix_est_basico",   "ON estabelecimento(cd_cnpjbasico)"),
-                        ("ix_est_fantasia", "ON estabelecimento(nm_nomefantasia)")],
-    "socios":          [("ix_soc_basico",   "ON socio(cd_cnpjbasico)"),
-                        ("ix_soc_cpf",      "ON socio(cd_cpfcnpjsocio)"),
-                        ("ix_soc_nome",     "ON socio(nm_nomesociorazaosocial)")],
+    "empresa":         [("idx_empresa_razao",      "ON empresa(nm_razaosocial)")],
+    "estabelecimento": [("idx_estab_basico",       "ON estabelecimento(cd_cnpjbasico)"),
+                        ("idx_estab_fantasia",     "ON estabelecimento(nm_nomefantasia)")],
+    "socios":          [("idx_socio_cnpjbasico",   "ON socio(cd_cnpjbasico)"),
+                        ("idx_socio_cpf",          "ON socio(cd_cpfcnpjsocio)"),
+                        ("idx_socio_nome",         "ON socio(nm_nomesociorazaosocial)")],
 }
 INDEXES_SECUNDARIOS = [ix for ixs in INDEXES_POR_TABELA.values() for ix in ixs]
 
@@ -423,6 +436,132 @@ def _recriar_indexes_tabela(engine, tabela: str):
     print(f"  Indices de {tabela} recriados em {time.time() - t0:.1f}s")
 
 
+def _normalizar_fts(texto):
+    if not texto:
+        return None
+    return unicodedata.normalize("NFD", texto).encode("ascii", "ignore").decode("ascii").upper()
+
+
+def _criar_fts_sqlite(engine):
+    """Recria as tabelas FTS5 usadas pelo CRUD em buscas por nome."""
+    if not DATABASE_URL.startswith("sqlite"):
+        print("  FTS5: ignorado (não é SQLite).")
+        return
+
+    print("\n--- Criando FTS5 ---")
+    raw = engine.raw_connection()
+    try:
+        raw.create_function("normalizar", 1, _normalizar_fts)
+        cur = raw.cursor()
+        steps = [
+            ("FTS empresa: removendo anterior", "DROP TABLE IF EXISTS fts_empresa"),
+            ("FTS empresa: criando", """
+                CREATE VIRTUAL TABLE fts_empresa
+                USING fts5(
+                    cd_cnpjbasico        UNINDEXED,
+                    nm_razaosocial,
+                    nm_nomefantasia,
+                    cd_situacaocadastral UNINDEXED,
+                    fl_matriz            UNINDEXED,
+                    tokenize = 'trigram'
+                )
+            """),
+            ("FTS empresa: populando", """
+                INSERT INTO fts_empresa(cd_cnpjbasico, nm_razaosocial, nm_nomefantasia,
+                                        cd_situacaocadastral, fl_matriz)
+                SELECT e.cd_cnpjbasico,
+                       normalizar(e.nm_razaosocial),
+                       normalizar(est.nm_nomefantasia),
+                       est.cd_situacaocadastral,
+                       est.cd_identificadormatrizfilial
+                FROM empresa e
+                LEFT JOIN estabelecimento est
+                    ON e.cd_cnpjbasico = est.cd_cnpjbasico
+                   AND est.cd_cnpjordem = '0001'
+            """),
+            ("FTS sócio: removendo anterior", "DROP TABLE IF EXISTS fts_socio"),
+            ("FTS sócio: criando", """
+                CREATE VIRTUAL TABLE fts_socio
+                USING fts5(
+                    rowid_ref UNINDEXED,
+                    nm_nomesociorazaosocial,
+                    tokenize = 'trigram'
+                )
+            """),
+            ("FTS sócio: populando", """
+                INSERT INTO fts_socio(rowid_ref, nm_nomesociorazaosocial)
+                SELECT id, normalizar(nm_nomesociorazaosocial)
+                FROM socio
+            """),
+        ]
+        for label, sql in steps:
+            ti = time.time()
+            print(f"  {label}...", end="\r")
+            cur.execute(sql)
+            raw.commit()
+            print(f"  {label}: OK ({time.time() - ti:.1f}s)")
+        cur.close()
+    finally:
+        raw.close()
+
+
+def _validar_banco(engine) -> bool:
+    """Validação rápida: existência de dados, índices e FTS populada."""
+    print("\n--- Validação do banco ---")
+    ok = True
+    tabelas_obrigatorias = [
+        "empresa", "estabelecimento", "socio", "simples",
+        "cnae", "municipio", "natureza", "qualificacao", "motivo", "pais",
+    ]
+    with engine.connect() as conn:
+        for tabela in tabelas_obrigatorias:
+            exists = conn.execute(text(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=:t"
+            ), {"t": tabela}).fetchone()
+            tem_linha = conn.execute(text(f"SELECT 1 FROM {tabela} LIMIT 1")).fetchone() if exists else None
+            status = "OK" if tem_linha else "FALHOU"
+            print(f"  {tabela:<18} {status}")
+            ok = ok and bool(tem_linha)
+
+        existentes = {r[0] for r in conn.execute(text(
+            "SELECT name FROM sqlite_master WHERE type='index'"
+        )).fetchall()}
+        for nome, _ in INDEXES_SECUNDARIOS:
+            status = "OK" if nome in existentes else "FALHOU"
+            print(f"  índice {nome:<24} {status}")
+            ok = ok and nome in existentes
+
+        if DATABASE_URL.startswith("sqlite"):
+            for fts in ["fts_empresa", "fts_socio"]:
+                exists = conn.execute(text(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=:t"
+                ), {"t": fts}).fetchone()
+                tem_linha = conn.execute(text(f"SELECT 1 FROM {fts} LIMIT 1")).fetchone() if exists else None
+                status = "OK" if tem_linha else "FALHOU"
+                print(f"  {fts:<18} {status}")
+                ok = ok and bool(tem_linha)
+
+    print("  Resultado:", "OK" if ok else "FALHOU")
+    return ok
+
+
+def _resetar_banco(engine):
+    """Remove tabelas geradas pela carga. Use apenas em init --reset."""
+    print("\n--- Reset do banco ---")
+    tabelas = [
+        "fts_empresa", "fts_socio",
+        "tmp_empresa", "tmp_estabelecimento", "tmp_socios",
+        "tb_checkpoint_carga", "tb_processamento_mensal",
+        "simples", "socio", "estabelecimento", "empresa",
+        "cnae", "municipio", "natureza", "qualificacao", "motivo", "pais",
+    ]
+    with engine.connect() as conn:
+        for tabela in tabelas:
+            conn.execute(text(f"DROP TABLE IF EXISTS {tabela}"))
+        conn.commit()
+    print("  Tabelas removidas.")
+
+
 def _listar_zips(mes: str, tabela: str) -> list[Path]:
     pasta = DADOS_BRUTOS / mes
     return sorted(pasta.glob(PADROES_ZIP[tabela]))
@@ -507,22 +646,27 @@ def _registrar(engine, mes: str, stats: dict, status: str):
 
 
 # ---------------------------------------------------------------------------
-# Carga de domínios e Simples (uma única vez, do mês mais recente)
+# Carga de domínios e Simples (foto do mês processado)
 # ---------------------------------------------------------------------------
 
-def _carregar_dominios_e_simples(engine):
+def _recarregar_dominios_e_simples(engine, mes: str):
+    """Recarrega tabelas pequenas e Simples como foto atual do mês.
+
+    Domínios e Simples não guardam histórico no schema atual. A cada mês
+    processado, estas tabelas passam a representar o snapshot mais recente
+    carregado no banco.
+    """
+    print(f"\n--- Domínios e Simples ({mes}) ---")
     dominios = ["cnaes", "municipios", "naturezas", "qualificacoes", "motivos", "paises"]
     for tabela in dominios:
         tabela_db = TABELA_DB[tabela]
-        with engine.connect() as conn:
-            count = conn.execute(text(f"SELECT COUNT(*) FROM {tabela_db}")).scalar()
-        if count and count > 0:
-            print(f"  {tabela_db}: ja carregado ({count:,} registros)")
-            continue
-        zips = _listar_zips(MES_DOMINIOS, tabela)
+        zips = _listar_zips(mes, tabela)
         if not zips:
-            print(f"  [AVISO] {tabela}: nenhum ZIP em {MES_DOMINIOS}")
+            print(f"  [AVISO] {tabela}: nenhum ZIP em {mes}")
             continue
+        with engine.connect() as conn:
+            conn.execute(text(f"DELETE FROM {tabela_db}"))
+            conn.commit()
         total = 0
         for zp in zips:
             zf, stream = _abrir_stream(zp)
@@ -536,15 +680,13 @@ def _carregar_dominios_e_simples(engine):
                 zf.close()
         print(f"  {tabela_db}: {total:,} registros")
 
-    with engine.connect() as conn:
-        count = conn.execute(text("SELECT COUNT(*) FROM simples")).scalar()
-    if count and count > 0:
-        print(f"  simples: ja carregado ({count:,} registros)")
-        return
-    zips = _listar_zips(MES_DOMINIOS, "simples")
+    zips = _listar_zips(mes, "simples")
     if not zips:
-        print(f"  [AVISO] simples: nenhum ZIP em {MES_DOMINIOS}")
+        print(f"  [AVISO] simples: nenhum ZIP em {mes}")
         return
+    with engine.connect() as conn:
+        conn.execute(text("DELETE FROM simples"))
+        conn.commit()
     total = 0
     for zp in zips:
         zf, stream = _abrir_stream(zp)
@@ -750,6 +892,8 @@ def processar_mes(engine, mes: str, forcar: bool = False, deferred_indexes: bool
     if status == "CONCLUIDO" and not forcar:
         print(f"[{mes}] ja processado — pulando.")
         return
+    if forcar:
+        _limpar_checkpoints(engine, mes)
 
     if status == "ERRO":
         print(f"[{mes}] run anterior com ERRO — retomando do ultimo ZIP concluido...")
@@ -766,6 +910,7 @@ def processar_mes(engine, mes: str, forcar: bool = False, deferred_indexes: bool
 
     try:
         stats = _processar_tabelas(engine, mes, deferred_indexes=deferred_indexes, tabelas=tabelas)
+        _recarregar_dominios_e_simples(engine, mes)
 
         if eh_primeiro and not deferred_indexes:
             _criar_indexes_principais(engine)
@@ -800,7 +945,7 @@ def _listar_meses_disponiveis() -> list[str]:
     meses = [
         p.name for p in sorted(DADOS_BRUTOS.iterdir())
         if p.is_dir() and padrao.match(p.name)
-        and any(p.glob("Empresas*.zip"))
+        and any(p.glob("*.zip"))
     ]
     return meses
 
@@ -858,10 +1003,34 @@ def main():
 
 
 def _main():
+    parser = argparse.ArgumentParser(description="Carga oficial da base CNPJ")
+    sub = parser.add_subparsers(dest="cmd")
 
-    parser = argparse.ArgumentParser(description="Carga incremental da base CNPJ")
-    parser.add_argument("--mes",    metavar="YYYY-MM", help="Processa apenas este mes")
-    parser.add_argument("--status", action="store_true", help="Mostra situacao de cada mes")
+    p_init = sub.add_parser("init", help="Cria o banco inicial a partir dos meses disponiveis")
+    p_init.add_argument("--reset", action="store_true", help="Apaga as tabelas geradas antes de recriar")
+    p_init.add_argument("--sem-fts", action="store_true", help="Nao recria FTS5 ao final")
+    p_init.add_argument(
+        "--estrategia",
+        choices=["historico-socios", "snapshot-atual", "completo"],
+        default="historico-socios",
+        help=(
+            "historico-socios: meses antigos so com Socios*.zip e mes mais recente completo; "
+            "snapshot-atual: somente o mes mais recente completo; "
+            "completo: todas as tabelas de todos os meses"
+        ),
+    )
+
+    p_atualizar = sub.add_parser("atualizar", help="Processa o snapshot completo de um mes")
+    p_atualizar.add_argument("--mes", metavar="YYYY-MM", help="Mes a processar; padrao: mes mais recente em dados-brutos")
+    p_atualizar.add_argument("--force", action="store_true", help="Reprocessa o mes mesmo se ja estiver CONCLUIDO")
+    p_atualizar.add_argument("--sem-fts", action="store_true", help="Nao recria FTS5 ao final")
+
+    sub.add_parser("status", help="Mostra situacao dos meses disponiveis")
+    sub.add_parser("validar", help="Valida tabelas, indices e FTS")
+
+    # Compatibilidade com o uso antigo: `carga.py --status` ou `carga.py --mes YYYY-MM`.
+    parser.add_argument("--mes", metavar="YYYY-MM", help=argparse.SUPPRESS)
+    parser.add_argument("--status", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     print(f"Banco        : {DATABASE_URL}")
@@ -886,6 +1055,25 @@ def _main():
     if DATABASE_URL.startswith("sqlite"):
         _configurar_sqlite(engine)
 
+    if args.status:
+        args.cmd = "status"
+    elif args.mes:
+        args.cmd = "atualizar"
+    elif not args.cmd:
+        args.cmd = "atualizar"
+
+    reset = bool(getattr(args, "reset", False))
+    if args.cmd == "init" and reset:
+        _resetar_banco(engine)
+
+    if args.cmd == "status":
+        _show_status(engine)
+        return
+
+    if args.cmd == "validar":
+        ok = _validar_banco(engine)
+        sys.exit(0 if ok else 1)
+
     print("Criando tabelas (se nao existirem)...")
     Base.metadata.create_all(bind=engine)
 
@@ -902,51 +1090,45 @@ def _main():
         conn.commit()
     print("Indice ix_socio_chave_natural: OK")
 
-    if args.status:
-        _show_status(engine)
-        return
+    meses_disponiveis = _listar_meses_disponiveis()
+    if not meses_disponiveis:
+        print("ERRO: nenhum mes disponivel em dados-brutos.")
+        sys.exit(1)
 
-    print("\n--- Dominios e Simples ---")
-    _carregar_dominios_e_simples(engine)
-
-    if args.mes:
-        meses = [args.mes]
+    if args.cmd == "init":
+        estrategia = getattr(args, "estrategia", "historico-socios")
+        meses = [meses_disponiveis[-1]] if estrategia == "snapshot-atual" else meses_disponiveis
+        forcar = reset
     else:
-        meses = _listar_meses_disponiveis()
+        estrategia = None
+        mes = getattr(args, "mes", None) or meses_disponiveis[-1]
+        meses = [mes]
+        forcar = bool(getattr(args, "force", False))
 
     pendentes = [m for m in meses if _mes_status(engine, m) != "CONCLUIDO"]
+    if forcar:
+        pendentes = meses
 
     # Modo batch: se há mais de um mês pendente OU se os índices secundários estão ausentes
     # (run anterior interrompido antes do CREATE INDEX final), processa sem drop/recreate por tabela
     # e cria todos os índices UMA VEZ ao final — economiza N×(drop+create) por tabela.
     deferred = not _todos_indexes_existem(engine) or len(pendentes) > 1
 
-    # Modo otimizado para carga com múltiplos meses (carga inicial ou releitura):
-    # - empresa + estabelecimento: apenas do mês mais recente (último snapshot contém tudo)
-    # - socios: todos os meses (histórico de saída só existe nos snapshots anteriores)
-    # Carga incremental (1 mês) processa sempre as três tabelas normalmente.
-    otimizado = len(pendentes) > 1 and not args.mes
-
     if pendentes:
         if deferred:
-            if otimizado:
-                print(f"\n{len(pendentes)} mes(es) pendentes — modo batch otimizado.")
-                print(f"  empresa + estabelecimento: apenas {pendentes[-1]} (ultimo snapshot)")
-                print(f"  socios: todos os {len(pendentes)} meses (historico completo)")
-            else:
-                print(f"\n{len(pendentes)} mes(es) a processar — modo batch (indices criados ao final).")
+            print(f"\n{len(pendentes)} mes(es) a processar — modo batch (indices criados ao final).")
             _dropar_todos_indexes(engine)
         else:
             print(f"\n{len(pendentes)} mes(es) a processar.")
         print()
 
         inicio_total = time.time()
+        mes_mais_recente = meses_disponiveis[-1]
         for mes in pendentes:
-            if otimizado:
-                tabelas = ["empresa", "estabelecimento", "socios"] if mes == pendentes[-1] else ["socios"]
-            else:
-                tabelas = None  # todas as tabelas
-            processar_mes(engine, mes, deferred_indexes=deferred, tabelas=tabelas)
+            tabelas = None
+            if args.cmd == "init" and estrategia == "historico-socios" and mes != mes_mais_recente:
+                tabelas = ["socios"]
+            processar_mes(engine, mes, forcar=forcar, deferred_indexes=deferred, tabelas=tabelas)
 
         elapsed = time.time() - inicio_total
         h, rem = divmod(int(elapsed), 3600)
@@ -960,7 +1142,12 @@ def _main():
         print("\n--- Criando indices secundarios ---")
         _criar_indexes_principais(engine)
 
+    if not getattr(args, "sem_fts", False):
+        _criar_fts_sqlite(engine)
+
+    ok = _validar_banco(engine)
     _show_status(engine)
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":

@@ -62,7 +62,7 @@ def busca_rede(cnpj: str, db: Session = Depends(get_db)):
 def grafo_empresa(
     cnpj: str,
     # Profundidade de expansão (saltos) a partir da empresa raiz
-    profundidade: Annotated[int, Query(ge=1, le=4)] = 2,
+    profundidade: Annotated[int, Query(ge=1, le=10)] = 2,
     db: Session = Depends(get_db),
 ):
     """

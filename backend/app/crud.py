@@ -480,10 +480,9 @@ GRAFO_CATEGORIAS = [
 ]
 _SIT_TO_CAT = {"02": 0, "03": 1, "04": 2, "08": 3, "01": 3}
 _ENCERRADAS_GRAFO = ("01", "08")
-# Cap por nó na expansão BFS — só corta hubs explosivos, não limita grafos normais.
-_GRAFO_PER_NODE_DEGREE_CAP = 150
 # Tamanho de chunk para IN/VALUES — abaixo do limite de parâmetros do SQLite (999).
 _GRAFO_QUERY_CHUNK = 400
+_GRAFO_PROFUNDIDADE_MAX = 10
 
 
 def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
@@ -491,20 +490,21 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
     """Grafo de rede societária por expansão BFS até `profundidade` saltos.
 
     Bipartido: nós de Empresa e de Sócio; aresta = vínculo sócio↔empresa.
-    Sem cap global de nós — apenas um cap por nó para evitar que um "hub"
-    (pessoa/empresa com centenas de vínculos) sozinho exploda o frontier.
-    Queries são divididas em chunks para escalar até `n=4` em redes grandes.
+    BFS lazy: vai só até `profundidade` (default 2 — primeiro load rápido).
+    Sem caps globais — o frontend é responsável por não oferecer N maior
+    quando o grafo atual já está grande. `nivel_alcancado` indica até onde
+    a BFS de fato chegou (pode parar antes se a rede acabar). Cada nó
+    traz `nivel` (distância da raiz).
     """
     _load_cache(db)
     mes_atual = _get_mes_atual(db)
-    profundidade = max(1, min(4, int(profundidade)))
+    profundidade = max(1, min(_GRAFO_PROFUNDIDADE_MAX, int(profundidade)))
 
     nodes: dict[str, dict] = {}
     links: list[dict] = []
     link_seen: set = set()
-    nos_truncados: set = set()  # IDs de nós cuja expansão foi capada
 
-    def add_empresa(cb, razao, dv, sit, sit_esp=None, is_root=False):
+    def add_empresa(cb, razao, dv, sit, sit_esp=None, is_root=False, nivel=0):
         nid = "e:" + cb
         if nid in nodes:
             return nid
@@ -519,10 +519,11 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
             "category":      _SIT_TO_CAT.get(sit, 3),
             "situacao":      SITUACAO.get(sit, "—"),
             "is_root":       is_root,
+            "nivel":         nivel,
         }
         return nid
 
-    def add_socio(cpf_s, nome_s, ativo, is_root=False):
+    def add_socio(cpf_s, nome_s, ativo, is_root=False, nivel=0):
         nid = "s:" + (cpf_s or "") + "|" + (nome_s or "")
         if nid in nodes:
             if ativo and nodes[nid]["category"] == 5:
@@ -535,6 +536,7 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
             "cpf":      cpf_s,
             "category": 4 if ativo else 5,
             "is_root":  is_root,
+            "nivel":    nivel,
         }
         return nid
 
@@ -566,7 +568,8 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
         raiz_id = add_empresa(cb, emp.nm_razaosocial if emp else cb,
                               est.cd_cnpjdv if est else "",
                               est.cd_situacaocadastral if est else None,
-                              sit_esp=est.nm_situacaoespecial if est else None, is_root=True)
+                              sit_esp=est.nm_situacaoespecial if est else None,
+                              is_root=True, nivel=0)
         visited_emp.add(cb)
         frontier_emp = [cb]
     else:
@@ -596,12 +599,15 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
         if not row:
             return None
         cpf_root, nome_root = row[0], row[1]
-        raiz_id = add_socio(cpf_root, nome_root, True, is_root=True)
+        raiz_id = add_socio(cpf_root, nome_root, True, is_root=True, nivel=0)
         visited_soc.add((cpf_root, nome_root))
         frontier_soc = [(cpf_root, nome_root)]
 
     # ── BFS ──
-    for _ in range(profundidade):
+    nivel_alcancado = 0  # só raiz por enquanto (nivel 0)
+
+    for level_idx in range(profundidade):
+        level = level_idx + 1
         next_emp, next_soc = [], []
 
         # ── empresas → sócios (em chunks) ──
@@ -627,15 +633,10 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
                 for r in rows:
                     rows_per_cb.setdefault(r.cb, []).append(r)
 
-            # Aplica cap por nó (ativos primeiro, depois ordem alfabética determinística)
             for cb, rs in rows_per_cb.items():
-                if len(rs) > _GRAFO_PER_NODE_DEGREE_CAP:
-                    rs.sort(key=lambda r: (0 if (r.max_dt == mes_atual) else 1, r.nome or ""))
-                    rs = rs[:_GRAFO_PER_NODE_DEGREE_CAP]
-                    nos_truncados.add("e:" + cb)
                 for r in rs:
                     ativo = (r.max_dt == mes_atual) and (r.sit not in _ENCERRADAS_GRAFO)
-                    sid = add_socio(r.cpf, r.nome, ativo)
+                    sid = add_socio(r.cpf, r.nome, ativo, nivel=level)
                     add_link(sid, "e:" + r.cb, ativo)
                     key = (r.cpf, r.nome)
                     if sid and key not in visited_soc:
@@ -676,13 +677,9 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
                     rows_per_socio.setdefault((r.cpf, r.nome), []).append(r)
 
             for (cpf_p, nome_p), rs in rows_per_socio.items():
-                if len(rs) > _GRAFO_PER_NODE_DEGREE_CAP:
-                    rs.sort(key=lambda r: (0 if (r.max_dt == mes_atual) else 1, r.razao or ""))
-                    rs = rs[:_GRAFO_PER_NODE_DEGREE_CAP]
-                    nos_truncados.add("s:" + (cpf_p or "") + "|" + (nome_p or ""))
                 for r in rs:
                     ativo = (r.max_dt == mes_atual) and (r.sit not in _ENCERRADAS_GRAFO)
-                    eid = add_empresa(r.cb, r.razao, r.dv, r.sit, sit_esp=r.sit_esp)
+                    eid = add_empresa(r.cb, r.razao, r.dv, r.sit, sit_esp=r.sit_esp, nivel=level)
                     sid = "s:" + (r.cpf or "") + "|" + (r.nome or "")
                     if sid in nodes:
                         if ativo and nodes[sid]["category"] == 5:
@@ -692,22 +689,86 @@ def get_grafo_rede(db: Session, cnpj: str | None = None, cpf: str | None = None,
                         visited_emp.add(r.cb)
                         next_emp.append(r.cb)
 
+        nivel_alcancado = level
         frontier_emp, frontier_soc = next_emp, next_soc
+
+        # Termino natural — não há mais ninguém para expandir
         if not frontier_emp and not frontier_soc:
             break
 
-    # Marca nós cuja expansão foi capada (UI pode indicar visualmente)
-    for nid in nos_truncados:
-        if nid in nodes:
-            nodes[nid]["truncado_expansao"] = True
+    # Há mais para expandir num próximo N? Probe rápido: faz as queries do
+    # nível N+1 e checa se algum resultado seria de fato novo (nó não
+    # visitado OU link sócio-empresa ainda não em link_seen). Cobre o caso
+    # em que a fronteira tem itens mas processá-los só revisitaria conhecidos.
+    pode_aprofundar = False
+    if (frontier_emp or frontier_soc) and profundidade < _GRAFO_PROFUNDIDADE_MAX:
+        # Probe empresa → sócio
+        if frontier_emp:
+            for start in range(0, len(frontier_emp), _GRAFO_QUERY_CHUNK):
+                if pode_aprofundar:
+                    break
+                chunk = frontier_emp[start:start + _GRAFO_QUERY_CHUNK]
+                keys = {f"c{i}": cb for i, cb in enumerate(chunk)}
+                in_clause = ",".join(f":c{i}" for i in range(len(chunk)))
+                rows = db.execute(text(f"""
+                    SELECT s.cd_cnpjbasico AS cb,
+                           s.nm_nomesociorazaosocial AS nome,
+                           s.cd_cpfcnpjsocio AS cpf
+                    FROM socio s
+                    WHERE s.cd_cnpjbasico IN ({in_clause})
+                      AND s.nm_nomesociorazaosocial IS NOT NULL
+                    GROUP BY s.cd_cnpjbasico, s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio
+                """), keys).fetchall()
+                for r in rows:
+                    if (r.cpf, r.nome) not in visited_soc:
+                        pode_aprofundar = True
+                        break
+                    sid = "s:" + (r.cpf or "") + "|" + (r.nome or "")
+                    eid = "e:" + r.cb
+                    if (sid, eid) not in link_seen:
+                        pode_aprofundar = True
+                        break
+        # Probe sócio → empresa
+        if not pode_aprofundar and frontier_soc:
+            for start in range(0, len(frontier_soc), _GRAFO_QUERY_CHUNK):
+                if pode_aprofundar:
+                    break
+                chunk = frontier_soc[start:start + _GRAFO_QUERY_CHUNK]
+                binds: dict = {}
+                vals = []
+                for i, (c, nm) in enumerate(chunk):
+                    binds[f"pc{i}"] = c
+                    binds[f"pn{i}"] = nm
+                    vals.append(f"(:pc{i}, :pn{i})")
+                rows = db.execute(text(f"""
+                    WITH persons(cpf, nome) AS (VALUES {",".join(vals)})
+                    SELECT s.cd_cpfcnpjsocio AS cpf,
+                           s.nm_nomesociorazaosocial AS nome,
+                           s.cd_cnpjbasico AS cb
+                    FROM socio s
+                    JOIN persons p
+                        ON s.nm_nomesociorazaosocial = p.nome
+                       AND s.cd_cpfcnpjsocio IS p.cpf
+                    GROUP BY s.cd_cpfcnpjsocio, s.nm_nomesociorazaosocial, s.cd_cnpjbasico
+                """), binds).fetchall()
+                for r in rows:
+                    if r.cb not in visited_emp:
+                        pode_aprofundar = True
+                        break
+                    sid = "s:" + (r.cpf or "") + "|" + (r.nome or "")
+                    eid = "e:" + r.cb
+                    if (sid, eid) not in link_seen:
+                        pode_aprofundar = True
+                        break
 
     return {
-        "raiz":         raiz_id,
-        "nodes":        list(nodes.values()),
-        "links":        links,
-        "categories":   GRAFO_CATEGORIAS,
-        "profundidade": profundidade,
-        "truncado":     bool(nos_truncados),
+        "raiz":             raiz_id,
+        "nodes":            list(nodes.values()),
+        "links":            links,
+        "categories":       GRAFO_CATEGORIAS,
+        "profundidade":     profundidade,
+        "nivel_alcancado":  nivel_alcancado,   # deepest level efetivamente completado
+        "pode_aprofundar":  pode_aprofundar,   # se False, N+1 não adicionaria nada
     }
 
 

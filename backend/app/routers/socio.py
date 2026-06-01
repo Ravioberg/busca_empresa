@@ -50,7 +50,7 @@ def grafo_socio(
     cpf: Annotated[str | None, Query(min_length=3)] = None,
     nome: Annotated[str | None, Query(min_length=2)] = None,
     # Profundidade de expansão (saltos) a partir do sócio raiz
-    profundidade: Annotated[int, Query(ge=1, le=4)] = 2,
+    profundidade: Annotated[int, Query(ge=1, le=10)] = 2,
     db: Session = Depends(get_db),
 ):
     """

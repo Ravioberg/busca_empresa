@@ -118,6 +118,9 @@ export async function buscarEmpresaRede(cnpj) {
   return data;
 }
 
+// profundidade default = 2: BFS lazy (rápido no primeiro load). Frontend
+// refetch ao mudar N. Backend devolve `nivel_alcancado` + `truncado` para
+// o front saber quais Ns ainda fazem sentido.
 export async function buscarGrafoEmpresa(cnpj, profundidade = 2) {
   const cnpjLimpo = cnpj.replace(/\D/g, "");
   const key = `grafoE:${cnpjLimpo}:${profundidade}`;

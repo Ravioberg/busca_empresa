@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts";
 import { buscarGrafoEmpresa, buscarGrafoSocio } from "../api";
 
@@ -12,7 +12,27 @@ const CAT_COLORS = [
   "#cbd5e1", // 5 Ex-sócio
 ];
 
-const PROFUNDIDADES = [1, 2, 3, 4];
+// Profundidade máxima absoluta — o backend devolve `nivel_alcancado` baseado
+// nos caps globais; só mostramos botões até esse valor.
+const PROFUNDIDADE_TETO = 10;
+
+// Heurística: se o grafo atual já chegou nesses tamanhos, o próximo N é
+// previsivelmente pior — não oferecemos o botão.
+const MAX_PREVIEW_NODES = 2000;
+const MAX_PREVIEW_LINKS = 3500;
+
+// Acima desses limites, desligamos efeitos visuais caros (hover de adjacência,
+// hideOverlap O(n²), thumbnail, animação) — mantemos o force layout intacto
+// para que o grafo se espalhe igual, só com menos sobrecarga por frame.
+const LIGHT_NODE_THRESHOLD = 1000;
+const LIGHT_LINK_THRESHOLD = 2000;
+
+function isModoLeve(data) {
+  return !!(data && (
+    data.nodes.length > LIGHT_NODE_THRESHOLD ||
+    data.links.length > LIGHT_LINK_THRESHOLD
+  ));
+}
 
 // Conjunto de nós destacados: selecionados ∪ vizinhos diretos dos selecionados.
 function computeHighlight(selectedIds, links) {
@@ -25,17 +45,65 @@ function computeHighlight(selectedIds, links) {
   return result;
 }
 
-function montarOption(data, selectedIds) {
+// BFS no grafo (não-direcionado) para achar o caminho mínimo de `startId`
+// até `rootId`. Retorna array de ids do start ao root, ou null se desconectado.
+function caminhoMinimoAteRaiz(startId, rootId, links) {
+  if (startId === rootId) return [startId];
+  const adj = new Map();
+  for (const l of links) {
+    if (!adj.has(l.source)) adj.set(l.source, []);
+    if (!adj.has(l.target)) adj.set(l.target, []);
+    adj.get(l.source).push(l.target);
+    adj.get(l.target).push(l.source);
+  }
+  const parent = new Map();
+  parent.set(startId, null);
+  const queue = [startId];
+  while (queue.length) {
+    const cur = queue.shift();
+    if (cur === rootId) {
+      const path = [];
+      let n = rootId;
+      while (n !== null) {
+        path.unshift(n);
+        n = parent.get(n);
+      }
+      return path;
+    }
+    for (const v of (adj.get(cur) || [])) {
+      if (!parent.has(v)) {
+        parent.set(v, cur);
+        queue.push(v);
+      }
+    }
+  }
+  return null;
+}
+
+function montarOption(data, selectedIds, idsBuscados, mostrarInativos) {
   const small = data.nodes.length <= 55;
+  const leve  = isModoLeve(data);
   const noSelection = selectedIds.size === 0;
   const highlightSet = noSelection ? null : computeHighlight(selectedIds, data.links);
+  const buscando = idsBuscados && idsBuscados.size > 0;
 
   const nodes = data.nodes.map((n) => {
-    const isHighlight = noSelection || highlightSet.has(n.id);
+    const isInSelectionHighlight = noSelection || highlightSet.has(n.id);
     const isSelected = selectedIds.has(n.id);
+    const isBuscado = buscando && idsBuscados.has(n.id);
+    // Quando busca está ativa, dim quem não bateu. Senão usa a regra de seleção.
+    const isHighlight = buscando ? isBuscado : isInSelectionHighlight;
     const baseBorder = n.is_root ? { borderColor: "#0a1f3d", borderWidth: 3 } : {};
+    const searchedBorder = isBuscado
+      ? { borderColor: "#f59e0b", borderWidth: 3, shadowBlur: 14, shadowColor: "rgba(245,158,11,0.6)" }
+      : {};
     const selectedBorder = isSelected
-      ? { borderColor: "#0085ca", borderWidth: 3, shadowBlur: 14, shadowColor: "rgba(0,133,202,0.55)" }
+      ? {
+          borderColor: "#1e3a8a",                       // azul-marinho escuro, contrasta com sócio
+          borderWidth: 4,
+          shadowBlur: 22,
+          shadowColor: "rgba(59,130,246,0.9)",          // glow azul vivo em volta
+        }
       : {};
     return {
       id: n.id,
@@ -44,9 +112,10 @@ function montarOption(data, selectedIds) {
       symbol: n.tipo === "empresa" ? "roundRect" : "circle",
       symbolSize: n.is_root ? 30 : n.tipo === "empresa" ? 17 : 12,
       value: n.tipo === "empresa" ? n.situacao : (n.category === 4 ? "Sócio atual" : "Ex-sócio"),
-      label: { show: n.is_root || small || isSelected },
+      label: { show: n.is_root || small || isSelected || isBuscado },
       itemStyle: {
         ...baseBorder,
+        ...searchedBorder,
         ...selectedBorder,
         opacity: isHighlight ? 1 : 0.15,
       },
@@ -57,17 +126,25 @@ function montarOption(data, selectedIds) {
     };
   });
 
-  const links = data.links.map((l) => {
-    const isHighlight = noSelection || (highlightSet.has(l.source) && highlightSet.has(l.target));
-    const base = l.ativo
-      ? { width: 1.2, opacity: 0.55 }
-      : { width: 1, opacity: 0.3, type: "dashed" };
-    return {
-      source: l.source,
-      target: l.target,
-      lineStyle: isHighlight ? base : { ...base, opacity: 0.05 },
-    };
-  });
+  const links = data.links
+    .filter(l => mostrarInativos || l.ativo)  // toggle ex-vínculos
+    .map((l) => {
+      // Quando busca está ativa, só destaca links que tocam um nó encontrado.
+      // Senão, usa a regra de seleção/caminho.
+      const isHighlight = buscando
+        ? (idsBuscados.has(l.source) || idsBuscados.has(l.target))
+        : (noSelection || (highlightSet.has(l.source) && highlightSet.has(l.target)));
+      const base = l.ativo
+        ? { width: 1.2, opacity: 0.55 }
+        : { width: 1, opacity: 0.3, type: "dashed" };
+      return {
+        source: l.source,
+        target: l.target,
+        lineStyle: isHighlight ? base : { ...base, opacity: 0.05 },
+        // Cursor "grab" sinaliza que a linha pode ser usada pra arrastar a tela.
+        cursor: "grab",
+      };
+    });
 
   const categories = data.categories.map((c, i) => ({
     name: c.name,
@@ -91,7 +168,8 @@ function montarOption(data, selectedIds) {
         textStyle: { fontSize: 11, color: "#64748b" },
       },
     ],
-    animationDuration: 900,
+    animationDuration: leve ? 0 : 900,
+    animationDurationUpdate: leve ? 0 : 300,
     animationEasingUpdate: "quinticInOut",
     series: [
       {
@@ -112,26 +190,37 @@ function montarOption(data, selectedIds) {
         data: nodes,
         links,
         categories,
+        // Force config INTACTO — o grafo se espalha exatamente igual ao modo normal.
         force: {
           repulsion: small ? 220 : 90,
           edgeLength: small ? [60, 160] : [30, 110],
           gravity: 0.08,
           friction: 0.18,
         },
-        emphasis: { focus: "adjacency", label: { show: true } },
+        // Hover de nó destaca adjacência (links + vizinhos) em ambos os modos;
+        // em modo leve omitimos só o label do nó para evitar relayout pesado.
+        emphasis: {
+          focus: "adjacency",
+          label: { show: !leve },
+        },
         label: {
           position: "right",
           fontSize: 11,
           color: "#334155",
           formatter: "{b}",
         },
-        labelLayout: { hideOverlap: true },
+        // hideOverlap faz colisão O(n²) entre TODOS os labels por frame — desliga em leve.
+        labelLayout: { hideOverlap: !leve },
         // Range amplo de zoom — permite afastar muito (n=4 grande caber em tela) e aproximar bem.
         scaleLimit: { min: 0.02, max: 20 },
-        lineStyle: { color: "source", curveness: 0.12 },
+        // Curvas em links são caras com milhares de arestas — usa retas em leve.
+        lineStyle: { color: "source", curveness: leve ? 0 : 0.12 },
+        // Sem cintilação de seleção em leve (animação repetitiva por frame).
+        selectedMode: false,
       },
     ],
-    thumbnail: {
+    // Thumbnail (mini-mapa) re-renderiza o grafo inteiro a cada frame — pesado em leve.
+    thumbnail: leve ? { show: false } : {
       show: true,
       right: 12,
       bottom: 36,
@@ -150,12 +239,23 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  // Teto descoberto pela exploração — se uma fetch truncou em N=X, sabemos que
+  // N>X também trunca (mesmo resultado). Esconde botões de N que sabidamente
+  // não acrescentam nada. `null` = ainda não descobrimos teto.
+  const [nivelTeto, setNivelTeto] = useState(null);
+  // Categorias atualmente visíveis na legenda (objeto { "Empresa Ativa": true, ... }).
+  // `null` = todas visíveis (estado inicial, antes de qualquer toggle).
+  const [categoriasVisiveis, setCategoriasVisiveis] = useState(null);
+  // Texto da busca dentro do grafo (case-insensitive sobre nome do nó).
+  const [busca, setBusca] = useState("");
+  // Toggle de exibição de ex-vínculos (linhas pontilhadas).
+  const [mostrarInativos, setMostrarInativos] = useState(true);
 
   // Ref com links atualizados para o handler de clique (que é registrado uma vez por init).
   const linksRef = useRef([]);
   useEffect(() => { linksRef.current = data?.links || []; }, [data]);
 
-  // Busca o grafo quando raiz ou profundidade mudam
+  // Busca o grafo na profundidade atual (refetch ao trocar de raiz ou N).
   useEffect(() => {
     let cancel = false;
     async function load() {
@@ -180,18 +280,100 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
     return () => { cancel = true; };
   }, [raiz, profundidade]);
 
-  // Limpa seleção quando troca de grafo
+  // Reset do teto e da seleção quando a raiz muda
   useEffect(() => {
+    setNivelTeto(null);
     setSelectedIds(prev => prev.size === 0 ? prev : new Set());
+  }, [raiz]);
+
+  // Reset dos filtros de categoria toda vez que chega novo dataset (raiz OU N)
+  useEffect(() => {
+    if (data) setCategoriasVisiveis(null);
   }, [data]);
 
-  // Renderiza / re-inicializa o gráfico quando o dado muda
+  // Depois de cada fetch: descobre um teto se a BFS esgotou a rede OU se o
+  // grafo já está grande demais para fazer sentido aprofundar.
+  useEffect(() => {
+    if (!data) return;
+    const alcancado = data.nivel_alcancado ?? profundidade;
+    const nNodes = data.nodes?.length ?? 0;
+    const nLinks = data.links?.length ?? 0;
+
+    // Caso 1: BFS terminou natural antes do pedido (rede menor que o N pedido).
+    if (alcancado < profundidade) {
+      setNivelTeto(alcancado);
+      if (profundidade > alcancado) setProfundidade(alcancado);
+      return;
+    }
+
+    // Caso 2: BFS chegou no N pedido mas não há mais ninguém na fronteira —
+    // N+1 produziria o mesmo grafo. Trava aqui.
+    if (data.pode_aprofundar === false) {
+      setNivelTeto(alcancado);
+      return;
+    }
+
+    // Caso 3: chegou no N pedido com fronteira ainda aberta, mas o grafo já
+    // passou dos limites preview — próximo N seria gigante, trava aqui.
+    if (nNodes > MAX_PREVIEW_NODES || nLinks > MAX_PREVIEW_LINKS) {
+      setNivelTeto(profundidade);
+    }
+  }, [data]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // IDs dos nós que batem com a busca (substring case-insensitive no nome).
+  // Só ativa a partir de 2 caracteres — evita poluir o grafo com 1 letra.
+  const idsBuscados = useMemo(() => {
+    if (!data) return new Set();
+    const q = busca.trim().toLowerCase();
+    if (q.length < 2) return new Set();
+    return new Set(
+      data.nodes
+        .filter(n => (n.name || "").toLowerCase().includes(q))
+        .map(n => n.id)
+    );
+  }, [data, busca]);
+
+  // Reset busca quando o dataset muda (raiz ou N).
+  useEffect(() => { if (data) setBusca(""); }, [data]);
+
+  // Calcula caminho mínimo do último nó selecionado até a raiz e substitui
+  // a seleção com esse caminho. Se algum link do caminho for ex-vínculo,
+  // garante que ex-vínculos estejam visíveis pra não esconder partes do path.
+  const conectarAteRaiz = () => {
+    if (!data || selectedIds.size === 0) return;
+    const rootNode = data.nodes.find(n => n.is_root);
+    if (!rootNode) return;
+    const ultimo = Array.from(selectedIds).pop();
+    if (ultimo === rootNode.id) return;
+    const path = caminhoMinimoAteRaiz(ultimo, rootNode.id, data.links);
+    if (!path) return;
+    setSelectedIds(new Set(path));
+    // Se algum link do caminho for inativo, força mostrar ex-vínculos.
+    const pathSet = new Set(path);
+    for (const l of data.links) {
+      if (!l.ativo && pathSet.has(l.source) && pathSet.has(l.target)) {
+        setMostrarInativos(true);
+        break;
+      }
+    }
+  };
+
+  // Profundidades disponíveis: 1..nivelTeto (se descoberto) ou 1..(atual+1) (otimista).
+  const profundidadesDisponiveis = useMemo(() => {
+    const limite = nivelTeto != null
+      ? nivelTeto
+      : Math.min(PROFUNDIDADE_TETO, profundidade + 1);
+    const max = Math.max(1, Math.min(PROFUNDIDADE_TETO, limite));
+    return Array.from({ length: max }, (_, i) => i + 1);
+  }, [nivelTeto, profundidade]);
+
+  // Re-inicializa o gráfico quando os dados mudam (fetch novo).
   useEffect(() => {
     if (!ref.current || !data) return;
     chartRef.current?.dispose();
     const chart = echarts.init(ref.current);
     chartRef.current = chart;
-    chart.setOption(montarOption(data, selectedIds));
+    chart.setOption(montarOption(data, selectedIds, idsBuscados, mostrarInativos));
 
     // Click único: marca/encadeia
     chart.on("click", (p) => {
@@ -204,6 +386,29 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
         if (!hl.has(id)) return prev; // só permite encadear pelos vizinhos visíveis
         return new Set([...prev, id]);
       });
+    });
+
+    // Toggle de categoria na legenda — atualiza contadores filtrados.
+    chart.on("legendselectchanged", (e) => {
+      setCategoriasVisiveis({ ...e.selected });
+    });
+
+    // Rastreia tipo do item sob o cursor (node/edge/null) — usado pelo
+    // handler de pan para diferenciar "sobre nó" (não panar, ECharts arrasta)
+    // de "sobre linha ou vazio" (pode panar).
+    let hoverType = null;
+
+    // Hover em linha não deve focar/destacar nada. ECharts não tem como
+    // desligar emphasis só para edges, então cancelamos o destaque assim
+    // que detectamos mouseover numa aresta.
+    chart.on("mouseover", (p) => {
+      hoverType = p.dataType || null;
+      if (p.dataType === "edge") {
+        chart.dispatchAction({ type: "downplay" });
+      }
+    });
+    chart.on("mouseout", () => {
+      hoverType = null;
     });
 
     // Dblclick: abre a página da empresa/sócio
@@ -224,8 +429,8 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
     let lastX = 0, lastY = 0;
 
     const onPanStart = (e) => {
-      // Se está em cima de um nó, deixa o ECharts cuidar (draggable de nó).
-      if (e.target) return;
+      // Só nós bloqueiam o pan (têm drag próprio). Linhas e área vazia panam.
+      if (hoverType === "node") return;
       panning = true;
       lastX = e.offsetX;
       lastY = e.offsetY;
@@ -274,14 +479,34 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, onVerEmpresa, onVerSocio]);
 
-  // Atualiza apenas os estilos quando a seleção muda (sem reinit, preserva o layout do force)
+  // Atualiza estilos quando seleção, busca OU toggle de ex-vínculos mudam
   useEffect(() => {
     if (!chartRef.current || !data) return;
-    chartRef.current.setOption(montarOption(data, selectedIds));
-  }, [selectedIds, data]);
+    chartRef.current.setOption(montarOption(data, selectedIds, idsBuscados, mostrarInativos));
+  }, [selectedIds, idsBuscados, mostrarInativos, data]);
 
-  const totalNos = data?.nodes?.length || 0;
-  const totalLinks = data?.links?.length || 0;
+  // Contadores ajustados pelos filtros (categoria da legenda + ex-vínculos).
+  const { totalNos, totalLinks } = useMemo(() => {
+    if (!data) return { totalNos: 0, totalLinks: 0 };
+    // Sem filtro de categoria e mostrando tudo: conta direto.
+    if (!categoriasVisiveis && mostrarInativos) {
+      return { totalNos: data.nodes.length, totalLinks: data.links.length };
+    }
+    const catName = (n) => data.categories[n.category]?.name;
+    const idsVisiveis = new Set();
+    for (const n of data.nodes) {
+      // Raiz também respeita o toggle de categoria.
+      if (!categoriasVisiveis || categoriasVisiveis[catName(n)] !== false) {
+        idsVisiveis.add(n.id);
+      }
+    }
+    let nLinks = 0;
+    for (const l of data.links) {
+      if (!mostrarInativos && !l.ativo) continue;
+      if (idsVisiveis.has(l.source) && idsVisiveis.has(l.target)) nLinks++;
+    }
+    return { totalNos: idsVisiveis.size, totalLinks: nLinks };
+  }, [data, categoriasVisiveis, mostrarInativos]);
 
   return (
     <main className="md:ml-52 md:w-[calc(100%-13rem)] bg-[#f7f9fc] h-screen flex flex-col overflow-hidden">
@@ -321,11 +546,39 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
           <p className="text-[12px]" style={{ color: "#94a3b8" }}>
             {loading
               ? "Montando rede..."
-              : `${totalNos} nós · ${totalLinks} conexões${data?.truncado ? " · limite atingido" : ""}`}
+              : `${totalNos} nós · ${totalLinks} conexões${isModoLeve(data) ? " · modo leve" : ""}`}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setMostrarInativos(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors"
+            style={{
+              background: mostrarInativos ? "#eef4f9" : "#f1f5f9",
+              color:      mostrarInativos ? "#0a5494" : "#94a3b8",
+              border: `1px solid ${mostrarInativos ? "#bfdbfe" : "#e2e8f0"}`,
+            }}
+            title={mostrarInativos ? "Ocultar ex-vínculos (linhas pontilhadas)" : "Mostrar ex-vínculos"}
+          >
+            <span className="material-symbols-outlined text-[14px]">
+              {mostrarInativos ? "visibility" : "visibility_off"}
+            </span>
+            Ex-vínculos
+          </button>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={conectarAteRaiz}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors"
+              style={{ background: "#ecfdf5", color: "#15803d", border: "1px solid #bbf7d0" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#d1fae5")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "#ecfdf5")}
+              title="Marca o menor caminho do último nó selecionado até a raiz"
+            >
+              <span className="material-symbols-outlined text-[14px]">route</span>
+              Caminho até a raiz
+            </button>
+          )}
           {selectedIds.size > 0 && (
             <button
               onClick={() => setSelectedIds(new Set())}
@@ -342,7 +595,7 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
             Conexões (saltos)
           </span>
           <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e2e8f0" }}>
-            {PROFUNDIDADES.map((p) => {
+            {profundidadesDisponiveis.map((p) => {
               const ativo = p === profundidade;
               return (
                 <button
@@ -353,7 +606,7 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
                   style={{
                     background: ativo ? "#0085ca" : "#fff",
                     color: ativo ? "#fff" : "#64748b",
-                    borderLeft: p === PROFUNDIDADES[0] ? "none" : "1px solid #e2e8f0",
+                    borderLeft: p === profundidadesDisponiveis[0] ? "none" : "1px solid #e2e8f0",
                   }}
                 >
                   {p}
@@ -387,6 +640,45 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
           >
             <span className="material-symbols-outlined text-[13px]">touch_app</span>
             Clique para marcar caminho · duplo-clique abre · arraste para mover
+          </div>
+        )}
+
+        {/* Campo de busca no grafo */}
+        {!loading && !erro && data && (
+          <div
+            className="absolute top-3 right-3 flex items-center gap-2 px-3 py-1.5 rounded-lg"
+            style={{ background: "rgba(255,255,255,0.95)", border: "1px solid #e2e8f0" }}
+          >
+            <span className="material-symbols-outlined text-[15px]" style={{ color: "#94a3b8" }}>search</span>
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar no grafo..."
+              className="text-[12px] w-44 outline-none bg-transparent"
+              style={{ color: "#0f172a" }}
+            />
+            {busca && (
+              <>
+                {busca.trim().length < 2 ? (
+                  <span className="text-[11px] whitespace-nowrap" style={{ color: "#94a3b8" }}>
+                    digite +1
+                  </span>
+                ) : (
+                  <span className="text-[11px] whitespace-nowrap" style={{ color: idsBuscados.size > 0 ? "#0f172a" : "#b91c1c" }}>
+                    {idsBuscados.size > 0 ? `${idsBuscados.size} encontrado${idsBuscados.size === 1 ? "" : "s"}` : "nada"}
+                  </span>
+                )}
+                <button
+                  onClick={() => setBusca("")}
+                  className="flex items-center justify-center w-5 h-5 rounded hover:bg-slate-100"
+                  style={{ color: "#94a3b8" }}
+                  title="Limpar busca"
+                >
+                  <span className="material-symbols-outlined text-[14px]">close</span>
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

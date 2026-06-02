@@ -65,13 +65,20 @@ function makeOption(styledData, initialDepth) {
     series: [{
       type: "tree",
       data: [styledData],
+
       top: "3%",
       left: "18%",
       bottom: "3%",
       right: "22%",
+
       orient: "LR",
+
+      layerPadding: 180, // aumenta distância entre níveis
+      nodePadding: 40,   // aumenta distância entre irmãos
+
       symbolSize: 7,
       roam: true,
+
       label: {
         position: "left",
         verticalAlign: "middle",
@@ -79,6 +86,7 @@ function makeOption(styledData, initialDepth) {
         fontSize: 11,
         color: "#334155",
       },
+
       leaves: {
         label: {
           position: "right",
@@ -87,6 +95,7 @@ function makeOption(styledData, initialDepth) {
           fontSize: 11,
         },
       },
+
       emphasis: { focus: "descendant" },
       expandAndCollapse: true,
       initialTreeDepth: initialDepth,

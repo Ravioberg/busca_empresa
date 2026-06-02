@@ -44,9 +44,6 @@ function lerRecentes() {
   try { return JSON.parse(localStorage.getItem("ci_recentes_empresa") || "[]"); }
   catch { return []; }
 }
-function salvarRecentes(lista) {
-  localStorage.setItem("ci_recentes_empresa", JSON.stringify(lista));
-}
 
 export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
   const [termo, setTermo] = useState("");
@@ -55,7 +52,8 @@ export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
   const [ultimoTermo, setUltimoTermo] = useState("");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState(null);
-  const [recentes, setRecentes] = useState(lerRecentes);
+  // Recentes refletem cliques em perfil (gravados via App.jsx).
+  const [recentes] = useState(lerRecentes);
 
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
@@ -73,18 +71,11 @@ export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
     return () => clearTimeout(debounceRef.current);
   }, [termo]);
 
-  function addRecente(t, icone) {
-    const novo = [{ termo: t, icone }, ...recentes.filter((r) => r.termo !== t)].slice(0, 5);
-    setRecentes(novo);
-    salvarRecentes(novo);
-  }
-
   async function executarBusca(t) {
     setErro(null);
     setLoading(true);
     try {
       if (ehCnpj(t)) {
-        addRecente(t, "receipt_long");
         const res = await buscarEmpresaPorCnpj(t);
         if (res === null) return; // abortado
         if (!res) { setErro("CNPJ não encontrado na base."); return; }
@@ -95,7 +86,6 @@ export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
         setLista(res);
         setUltimoTermo(t);
         setPagina(0);
-        addRecente(t, "domain");
       }
     } catch (err) { setErro(err.message); }
     finally { setLoading(false); }
@@ -157,9 +147,15 @@ export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
             Pesquisa por Empresa
           </h1>
           <p className="text-[15px] leading-relaxed max-w-2xl" style={{ color: "#64748b" }}>
-            Acesse dados corporativos instantaneamente. Busque por Razão Social, Nome Fantasia ou CNPJ para iniciar
-            sua análise.
+            Busque por Razão Social, Nome Fantasia ou CNPJ para iniciar sua análise.
           </p>
+          <div className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px]" style={{ background: "#f1f5f9", color: "#64748b" }}>
+            <span className="material-symbols-outlined text-[13px]" style={{ color: "#94a3b8" }}>info</span>
+            CNPJ exemplo:
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.05em", color: "#0f172a" }}>
+              00.000.000/0001-00
+            </span>
+          </div>
         </div>
 
         {/* Barra de busca */}
@@ -227,30 +223,37 @@ export default function BuscaEmpresa({ onSelecionarEmpresa, onVoltar }) {
 
         {/* Pesquisas recentes — só quando campo vazio */}
         {!lista && !loading && termo.trim().length < 3 && (
-          <div className="mt-14 max-w-3xl mx-auto">
-            <h3 className="text-[13px] font-semibold mb-4 flex items-center gap-2" style={{ color: "#64748b" }}>
-              <span className="material-symbols-outlined text-[16px]">history</span>
-              Pesquisas Recentes
-            </h3>
-            {recentes.length === 0 ? (
-              <p className="text-[13px]" style={{ color: "#94a3b8" }}>Nenhuma pesquisa recente.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {recentes.map((r, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setTermo(r.termo)}
-                    className="flex items-center px-3.5 py-1.5 bg-white rounded-full text-[13px] transition-colors"
-                    style={{ border: "1px solid #e2e8f0", color: "#64748b" }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = "#0085ca"; e.currentTarget.style.color = "#0085ca"; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}
-                  >
-                    <span className="material-symbols-outlined text-[14px] mr-1.5">{r.icone}</span>
-                    {r.termo}
-                  </button>
-                ))}
+          <div className="w-full max-w-3xl mx-auto mt-[60px] grid grid-cols-1 md:grid-cols-3 gap-gutter">
+            <div className="md:col-span-3 bg-surface-container-lowest rounded-xl p-space-lg shadow-ambient border border-surface-variant">
+              <div className="flex items-center gap-3 mb-space-md">
+                <div className="p-2 bg-tertiary-fixed rounded-lg text-on-tertiary-fixed">
+                  <span className="material-symbols-outlined">history</span>
+                </div>
+                <h3 className="text-headline-sm text-on-surface">Pesquisas Recentes</h3>
               </div>
-            )}
+              {recentes.length === 0 ? (
+                <p className="text-body-sm text-on-surface-variant">Nenhuma pesquisa recente.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {recentes.map((r, i) => (
+                    <button
+                      key={i}
+                      onClick={() => r.cnpj
+                        ? onSelecionarEmpresa(r.cnpj)
+                        : setTermo(r.termo)}
+                      className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-container transition-colors group text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="material-symbols-outlined text-outline-variant group-hover:text-primary transition-colors">
+                          {r.icone}
+                        </span>
+                        <span className="text-body-sm text-on-surface font-medium">{r.termo}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

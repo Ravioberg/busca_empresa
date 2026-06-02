@@ -14,9 +14,10 @@ function lerRecentes() {
     try { return JSON.parse(localStorage.getItem(key) || "[]"); }
     catch { return []; }
   };
-  const empresa = parse("ci_recentes_empresa").map(r => ({ ...r, tipo: "empresa" }));
-  const socio   = parse("ci_recentes_socio").map(r => ({ ...r, tipo: "socio" }));
-  return [...empresa, ...socio].slice(0, 7);
+  // Até 5 de cada tipo — garante que ambos apareçam mesmo com cliques desbalanceados.
+  const empresa = parse("ci_recentes_empresa").slice(0, 5).map(r => ({ ...r, tipo: "empresa" }));
+  const socio   = parse("ci_recentes_socio").slice(0, 5).map(r => ({ ...r, tipo: "socio" }));
+  return [...empresa, ...socio];
 }
 
 const NAV = [
@@ -36,7 +37,7 @@ const S = {
   footerVal:    { color: "#4a5d7a", fontFamily: "'JetBrains Mono', monospace" },
 };
 
-export default function Sidebar({ tela, irPara }) {
+export default function Sidebar({ tela, irPara, onAbrirEmpresa, onAbrirSocio }) {
   const [info, setInfo]       = useState(null);
   const [recentes, setRecentes] = useState([]);
 
@@ -45,19 +46,29 @@ export default function Sidebar({ tela, irPara }) {
     fetchInfo().then(d => d && setInfo(d));
   }, [tela]);
 
+  function clicarRecente(r) {
+    if (r.tipo === "empresa" && r.cnpj && onAbrirEmpresa) {
+      onAbrirEmpresa(r.cnpj);
+    } else if (r.tipo === "socio" && (r.nome || r.termo) && onAbrirSocio) {
+      onAbrirSocio({ nome_socio: r.nome || r.termo, cpf_cnpj_socio: r.cpf });
+    } else {
+      // Entrada antiga sem cnpj/cpf — só leva pra tela de busca correspondente.
+      irPara(r.tipo);
+    }
+  }
+
   return (
     <aside
       style={S.sidebar}
       className="fixed left-0 top-0 h-screen w-52 flex flex-col z-40 hidden md:flex select-none"
     >
       {/* Brand */}
-      <div className="flex items-center gap-3 px-5 py-[18px] border-b shrink-0" style={S.divider}>
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-white font-bold text-[17px]"
-          style={S.brandMark}
-        >
-          π
-        </div>
+      <div className="flex items-center gap-1.5 px-4 py-[14px] border-b shrink-0" style={S.divider}>
+        <img
+          src="/Logo-Pytha.png"
+          alt="Pythagoras"
+          className="w-16 h-16 shrink-0 object-contain"
+        />
         <div>
           <div className="text-white font-semibold text-[15px] leading-tight" style={S.brandName}>
             Pythagoras
@@ -88,7 +99,7 @@ export default function Sidebar({ tela, irPara }) {
 
       {/* Buscas recentes */}
       {recentes.length > 0 && (
-        <div className="px-3 pt-4 flex-1 overflow-y-auto border-t sidebar-scroll" style={S.divider}>
+        <div className="px-3 pt-8 mt-6 flex-1 overflow-y-auto border-t sidebar-scroll" style={S.divider}>
           <div className="px-3 mb-2 flex items-center justify-between">
             <span className="text-[9.5px] font-semibold uppercase" style={S.sectionLabel}>
               Buscas recentes
@@ -98,7 +109,7 @@ export default function Sidebar({ tela, irPara }) {
           {recentes.map((r, i) => (
             <button
               key={i}
-              onClick={() => irPara(r.tipo)}
+              onClick={() => clicarRecente(r)}
               className="w-full flex items-center gap-2.5 px-3 py-[7px] rounded-lg text-left transition-colors hover:bg-white/5"
             >
               <span

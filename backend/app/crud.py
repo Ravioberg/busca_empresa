@@ -1213,6 +1213,8 @@ def get_perfil_socio(db: Session, cpf: str | None = None, nome: str | None = Non
         _bind["nome_exact"] = nome_exact
 
     # ── 1. Todos os registros desta pessoa ────────────────────────────────
+    # Sem LIMIT — precisa retornar TODA a história do sócio pra não cortar
+    # empresas (ativas ou inativas) do perfil.
     socios_raw = db.execute(text(f"""
         SELECT s.cd_cnpjbasico, s.cd_qualificacaosocio, s.dt_dataentradasociedade,
                s.cd_identificadorsocio, s.cd_faixaetaria, s.dt_ultimaatualizacao,
@@ -1228,7 +1230,6 @@ def get_perfil_socio(db: Session, cpf: str | None = None, nome: str | None = Non
             ON s.cd_cnpjbasico = est.cd_cnpjbasico AND est.cd_cnpjordem = '0001'
         WHERE {find_where}
         ORDER BY s.dt_ultimaatualizacao DESC
-        LIMIT 500
     """), _bind).fetchall()
 
     if not socios_raw:

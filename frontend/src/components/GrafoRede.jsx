@@ -80,14 +80,61 @@ function caminhoMinimoAteRaiz(startId, rootId, links) {
   return null;
 }
 
-function montarOption(data, selectedIds, idsBuscados, mostrarInativos) {
+function montarOption(data, selectedIds, idsBuscados, mostrarInativos, categoriasVisiveis) {
   const small = data.nodes.length <= 55;
   const leve  = isModoLeve(data);
   const noSelection = selectedIds.size === 0;
   const highlightSet = noSelection ? null : computeHighlight(selectedIds, data.links);
   const buscando = idsBuscados && idsBuscados.size > 0;
 
-  const nodes = data.nodes.map((n) => {
+  // BFS a partir da raiz usando só links/nós VISÍVEIS (após filtros). Nós que
+  // só se conectavam à raiz via algo filtrado (ex-vínculos OU categoria oculta)
+  // somem junto.
+  const catName = (n) => data.categories[n.category]?.name;
+  const idsOcultosCat = new Set();
+  let temCategoriaOculta = false;
+  if (categoriasVisiveis) {
+    for (const n of data.nodes) {
+      if (categoriasVisiveis[catName(n)] === false) {
+        idsOcultosCat.add(n.id);
+        temCategoriaOculta = true;
+      }
+    }
+  }
+  const algumFiltro = !mostrarInativos || temCategoriaOculta;
+
+  let nosVisiveisIds = null;
+  if (algumFiltro) {
+    nosVisiveisIds = new Set();
+    const root = data.nodes.find(n => n.is_root);
+    if (root && !idsOcultosCat.has(root.id)) {
+      const adj = new Map();
+      for (const l of data.links) {
+        if (!mostrarInativos && !l.ativo) continue;
+        if (idsOcultosCat.has(l.source) || idsOcultosCat.has(l.target)) continue;
+        if (!adj.has(l.source)) adj.set(l.source, []);
+        if (!adj.has(l.target)) adj.set(l.target, []);
+        adj.get(l.source).push(l.target);
+        adj.get(l.target).push(l.source);
+      }
+      nosVisiveisIds.add(root.id);
+      const queue = [root.id];
+      while (queue.length) {
+        const cur = queue.shift();
+        for (const v of (adj.get(cur) || [])) {
+          if (!nosVisiveisIds.has(v)) {
+            nosVisiveisIds.add(v);
+            queue.push(v);
+          }
+        }
+      }
+    }
+  }
+
+
+  const nodes = data.nodes
+    .filter(n => !nosVisiveisIds || nosVisiveisIds.has(n.id))
+    .map((n) => {
     const isInSelectionHighlight = noSelection || highlightSet.has(n.id);
     const isSelected = selectedIds.has(n.id);
     const isBuscado = buscando && idsBuscados.has(n.id);
@@ -250,6 +297,9 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
   const [busca, setBusca] = useState("");
   // Toggle de exibição de ex-vínculos (linhas pontilhadas).
   const [mostrarInativos, setMostrarInativos] = useState(true);
+  // Maior N já acessado COM ex-vínculos visíveis — se o usuário voltar pra
+  // um N <= esse, pode reativar o toggle (ele já viu esse tamanho funcionar).
+  const [nMaxAcessadoComEx, setNMaxAcessadoComEx] = useState(0);
 
   // Ref com links atualizados para o handler de clique (que é registrado uma vez por init).
   const linksRef = useRef([]);
@@ -280,45 +330,103 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
     return () => { cancel = true; };
   }, [raiz, profundidade]);
 
-  // Reset do teto e da seleção quando a raiz muda
+  // Reset do teto, seleção e contador de N-com-ex quando a raiz muda
   useEffect(() => {
     setNivelTeto(null);
+    setNMaxAcessadoComEx(0);
     setSelectedIds(prev => prev.size === 0 ? prev : new Set());
   }, [raiz]);
+
+  // Sempre que chegam dados COM ex-vínculos ligado, registra esse N como
+  // "já visto com ex-vínculos" — libera retornar ao toggle ON nesse N.
+  useEffect(() => {
+    if (data && mostrarInativos) {
+      setNMaxAcessadoComEx(prev => Math.max(prev, profundidade));
+    }
+  }, [data, mostrarInativos, profundidade]);
 
   // Reset dos filtros de categoria toda vez que chega novo dataset (raiz OU N)
   useEffect(() => {
     if (data) setCategoriasVisiveis(null);
   }, [data]);
 
-  // Depois de cada fetch: descobre um teto se a BFS esgotou a rede OU se o
-  // grafo já está grande demais para fazer sentido aprofundar.
+  // Contadores ajustados pelos filtros (categoria da legenda + ex-vínculos).
+  // BFS partindo da raiz só por links/nós visíveis — órfãos somem dos contadores.
+  // Declarado ANTES do useEffect abaixo porque ele depende destes valores.
+  const { totalNos, totalLinks } = useMemo(() => {
+    if (!data) return { totalNos: 0, totalLinks: 0 };
+    if (!categoriasVisiveis && mostrarInativos) {
+      return { totalNos: data.nodes.length, totalLinks: data.links.length };
+    }
+    const catName = (n) => data.categories[n.category]?.name;
+    const idsOcultosCat = new Set();
+    let temCategoriaOculta = false;
+    if (categoriasVisiveis) {
+      for (const n of data.nodes) {
+        if (categoriasVisiveis[catName(n)] === false) {
+          idsOcultosCat.add(n.id);
+          temCategoriaOculta = true;
+        }
+      }
+    }
+    const algumFiltro = !mostrarInativos || temCategoriaOculta;
+
+    let alcancaveis = null;
+    if (algumFiltro) {
+      alcancaveis = new Set();
+      const root = data.nodes.find(n => n.is_root);
+      if (root && !idsOcultosCat.has(root.id)) {
+        const adj = new Map();
+        for (const l of data.links) {
+          if (!mostrarInativos && !l.ativo) continue;
+          if (idsOcultosCat.has(l.source) || idsOcultosCat.has(l.target)) continue;
+          if (!adj.has(l.source)) adj.set(l.source, []);
+          if (!adj.has(l.target)) adj.set(l.target, []);
+          adj.get(l.source).push(l.target);
+          adj.get(l.target).push(l.source);
+        }
+        alcancaveis.add(root.id);
+        const queue = [root.id];
+        while (queue.length) {
+          const cur = queue.shift();
+          for (const v of (adj.get(cur) || [])) {
+            if (!alcancaveis.has(v)) { alcancaveis.add(v); queue.push(v); }
+          }
+        }
+      }
+    }
+    const idsVisiveis = alcancaveis || new Set(data.nodes.map(n => n.id));
+    let nLinks = 0;
+    for (const l of data.links) {
+      if (!mostrarInativos && !l.ativo) continue;
+      if (idsVisiveis.has(l.source) && idsVisiveis.has(l.target)) nLinks++;
+    }
+    return { totalNos: idsVisiveis.size, totalLinks: nLinks };
+  }, [data, categoriasVisiveis, mostrarInativos]);
+
+  // Depois de cada fetch ou mudança de filtro: descobre o teto considerando
+  // o grafo VISÍVEL (após filtros). Com ex-vínculos ocultos a rede fica
+  // menor, podendo liberar um N maior do que estaria disponível com o bruto.
   useEffect(() => {
     if (!data) return;
     const alcancado = data.nivel_alcancado ?? profundidade;
-    const nNodes = data.nodes?.length ?? 0;
-    const nLinks = data.links?.length ?? 0;
 
-    // Caso 1: BFS terminou natural antes do pedido (rede menor que o N pedido).
     if (alcancado < profundidade) {
       setNivelTeto(alcancado);
       if (profundidade > alcancado) setProfundidade(alcancado);
       return;
     }
-
-    // Caso 2: BFS chegou no N pedido mas não há mais ninguém na fronteira —
-    // N+1 produziria o mesmo grafo. Trava aqui.
     if (data.pode_aprofundar === false) {
       setNivelTeto(alcancado);
       return;
     }
-
-    // Caso 3: chegou no N pedido com fronteira ainda aberta, mas o grafo já
-    // passou dos limites preview — próximo N seria gigante, trava aqui.
-    if (nNodes > MAX_PREVIEW_NODES || nLinks > MAX_PREVIEW_LINKS) {
+    if (totalNos > MAX_PREVIEW_NODES || totalLinks > MAX_PREVIEW_LINKS) {
       setNivelTeto(profundidade);
+      return;
     }
-  }, [data]);  // eslint-disable-line react-hooks/exhaustive-deps
+    // Nada limita aqui — libera otimisticamente o próximo N.
+    setNivelTeto(null);
+  }, [data, totalNos, totalLinks]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // IDs dos nós que batem com a busca (substring case-insensitive no nome).
   // Só ativa a partir de 2 caracteres — evita poluir o grafo com 1 letra.
@@ -337,25 +445,20 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
   useEffect(() => { if (data) setBusca(""); }, [data]);
 
   // Calcula caminho mínimo do último nó selecionado até a raiz e substitui
-  // a seleção com esse caminho. Se algum link do caminho for ex-vínculo,
-  // garante que ex-vínculos estejam visíveis pra não esconder partes do path.
+  // a seleção com esse caminho. Respeita o filtro atual: se ex-vínculos estão
+  // ocultos, busca caminho só por links ativos (mantém o grafo independente).
   const conectarAteRaiz = () => {
     if (!data || selectedIds.size === 0) return;
     const rootNode = data.nodes.find(n => n.is_root);
     if (!rootNode) return;
     const ultimo = Array.from(selectedIds).pop();
     if (ultimo === rootNode.id) return;
-    const path = caminhoMinimoAteRaiz(ultimo, rootNode.id, data.links);
-    if (!path) return;
+    const linksUsados = mostrarInativos
+      ? data.links
+      : data.links.filter(l => l.ativo);
+    const path = caminhoMinimoAteRaiz(ultimo, rootNode.id, linksUsados);
+    if (!path) return;  // sem caminho viável com os filtros atuais
     setSelectedIds(new Set(path));
-    // Se algum link do caminho for inativo, força mostrar ex-vínculos.
-    const pathSet = new Set(path);
-    for (const l of data.links) {
-      if (!l.ativo && pathSet.has(l.source) && pathSet.has(l.target)) {
-        setMostrarInativos(true);
-        break;
-      }
-    }
   };
 
   // Profundidades disponíveis: 1..nivelTeto (se descoberto) ou 1..(atual+1) (otimista).
@@ -373,7 +476,7 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
     chartRef.current?.dispose();
     const chart = echarts.init(ref.current);
     chartRef.current = chart;
-    chart.setOption(montarOption(data, selectedIds, idsBuscados, mostrarInativos));
+    chart.setOption(montarOption(data, selectedIds, idsBuscados, mostrarInativos, categoriasVisiveis));
 
     // Click único: marca/encadeia
     chart.on("click", (p) => {
@@ -479,34 +582,21 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, onVerEmpresa, onVerSocio]);
 
-  // Atualiza estilos quando seleção, busca OU toggle de ex-vínculos mudam
+  // Atualiza estilos quando seleção, busca, toggle ex-vínculos OU filtros de categoria mudam
   useEffect(() => {
     if (!chartRef.current || !data) return;
-    chartRef.current.setOption(montarOption(data, selectedIds, idsBuscados, mostrarInativos));
-  }, [selectedIds, idsBuscados, mostrarInativos, data]);
+    chartRef.current.setOption(montarOption(data, selectedIds, idsBuscados, mostrarInativos, categoriasVisiveis));
+  }, [selectedIds, idsBuscados, mostrarInativos, categoriasVisiveis, data]);
 
-  // Contadores ajustados pelos filtros (categoria da legenda + ex-vínculos).
-  const { totalNos, totalLinks } = useMemo(() => {
-    if (!data) return { totalNos: 0, totalLinks: 0 };
-    // Sem filtro de categoria e mostrando tudo: conta direto.
-    if (!categoriasVisiveis && mostrarInativos) {
-      return { totalNos: data.nodes.length, totalLinks: data.links.length };
-    }
-    const catName = (n) => data.categories[n.category]?.name;
-    const idsVisiveis = new Set();
-    for (const n of data.nodes) {
-      // Raiz também respeita o toggle de categoria.
-      if (!categoriasVisiveis || categoriasVisiveis[catName(n)] !== false) {
-        idsVisiveis.add(n.id);
-      }
-    }
-    let nLinks = 0;
-    for (const l of data.links) {
-      if (!mostrarInativos && !l.ativo) continue;
-      if (idsVisiveis.has(l.source) && idsVisiveis.has(l.target)) nLinks++;
-    }
-    return { totalNos: idsVisiveis.size, totalLinks: nLinks };
-  }, [data, categoriasVisiveis, mostrarInativos]);
+  // Trava ATIVAR ex-vínculos quando o usuário está num N que SÓ foi possível
+  // por estar com o filtro ligado (ou seja, profundidade maior que a maior já
+  // explorada com ex-vínculos). Se ele já passou por esse N com ex-vínculos
+  // ligado antes, deixa reativar livremente.
+  const toggleBloqueado = !mostrarInativos && !!data &&
+    profundidade > nMaxAcessadoComEx && (
+      (data.nodes?.length ?? 0) > MAX_PREVIEW_NODES ||
+      (data.links?.length ?? 0) > MAX_PREVIEW_LINKS
+    );
 
   return (
     <main className="md:ml-52 md:w-[calc(100%-13rem)] bg-[#f7f9fc] h-screen flex flex-col overflow-hidden">
@@ -546,20 +636,27 @@ export default function GrafoRede({ raiz, onVoltar, onVerEmpresa, onVerSocio }) 
           <p className="text-[12px]" style={{ color: "#94a3b8" }}>
             {loading
               ? "Montando rede..."
-              : `${totalNos} nós · ${totalLinks} conexões${isModoLeve(data) ? " · modo leve" : ""}`}
+              : `${totalNos} nós · ${totalLinks} conexões${(totalNos > LIGHT_NODE_THRESHOLD || totalLinks > LIGHT_LINK_THRESHOLD) ? " · modo leve" : ""}`}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setMostrarInativos(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors"
+            onClick={toggleBloqueado ? undefined : () => setMostrarInativos(v => !v)}
+            disabled={toggleBloqueado}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             style={{
               background: mostrarInativos ? "#eef4f9" : "#f1f5f9",
               color:      mostrarInativos ? "#0a5494" : "#94a3b8",
               border: `1px solid ${mostrarInativos ? "#bfdbfe" : "#e2e8f0"}`,
             }}
-            title={mostrarInativos ? "Ocultar ex-vínculos (linhas pontilhadas)" : "Mostrar ex-vínculos"}
+            title={
+              toggleBloqueado
+                ? "Indisponível: o grafo completo (com ex-vínculos) excede o limite neste N. Reduza o N pra reativar."
+                : mostrarInativos
+                  ? "Ocultar ex-vínculos (linhas pontilhadas)"
+                  : "Mostrar ex-vínculos"
+            }
           >
             <span className="material-symbols-outlined text-[14px]">
               {mostrarInativos ? "visibility" : "visibility_off"}

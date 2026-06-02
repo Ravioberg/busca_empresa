@@ -50,7 +50,7 @@ if _raw_db_url.startswith("sqlite:///") and not os.path.isabs(_raw_db_url[len("s
     DATABASE_URL = f"sqlite:///{(BASE_DIR / _rel).resolve()}"
 else:
     DATABASE_URL = _raw_db_url
-CARGA_PY      = Path(__file__).parent / "carga2.py"
+CARGA_PY      = Path(__file__).parent / "carga.py"
 LOG_FILE      = BASE_DIR / "logs" / "sync_mensal.log"
 LOCK_FILE     = BASE_DIR / "logs" / "sync_mensal.lock"
 
@@ -337,6 +337,8 @@ def main() -> None:
                         help="Lista o que faria sem baixar nem processar nada")
     parser.add_argument("--agendar", action="store_true",
                         help="Cria tarefa diaria no Windows Task Scheduler e sai")
+    parser.add_argument("--force", action="store_true",
+                        help="Ignora a janela de publicacao da RF (dia 8+). Use quando os dados ja estiverem disponiveis antes do dia 8.")
     args    = parser.parse_args()
 
     if args.agendar:
@@ -351,13 +353,13 @@ def main() -> None:
             sys.exit(0)   # exit 0 — sobreposição não é erro para o agendador
 
     try:
-        _executar(dry_run)
+        _executar(dry_run, force=args.force)
     finally:
         if not dry_run:
             _liberar_lock()
 
 
-def _executar(dry_run: bool) -> None:
+def _executar(dry_run: bool, force: bool = False) -> None:
     log.info("=" * 60)
     log.info(f"sync_mensal {'[DRY-RUN] ' if dry_run else ''}"
              f"início: {datetime.now():%Y-%m-%d %H:%M:%S}")
@@ -372,10 +374,11 @@ def _executar(dry_run: bool) -> None:
     # ── 0. Janela de publicação ───────────────────────────────────────────────
     # A RF nunca publica antes do dia 8 (histórico: dia 8–30). Nos primeiros 7
     # dias do mês não há nada a fazer — evita consulta desnecessária ao site.
+    # --force pula essa proteção (use quando os dados ja estiverem no site).
     hoje = date.today()
-    if not dry_run and hoje.day < 8:
+    if not dry_run and not force and hoje.day < 8:
         log.info(f"Dia {hoje.day} — antes da janela de publicação da RF (dia 8+). "
-                 f"Nada a fazer.")
+                 f"Nada a fazer. Use --force para ignorar essa proteção.")
         log.info("=" * 60)
         return
 

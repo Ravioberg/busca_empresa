@@ -17,9 +17,6 @@ function lerRecentes() {
   try { return JSON.parse(localStorage.getItem("ci_recentes_socio") || "[]"); }
   catch { return []; }
 }
-function salvarRecentes(lista) {
-  localStorage.setItem("ci_recentes_socio", JSON.stringify(lista));
-}
 
 
 export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
@@ -30,7 +27,8 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
   const [modoBusca, setModoBusca] = useState("nome");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState(null);
-  const [recentes, setRecentes] = useState(lerRecentes);
+  // Recentes refletem cliques em perfil (gravados via App.jsx).
+  const [recentes] = useState(lerRecentes);
 
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
@@ -54,12 +52,6 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
     return () => clearTimeout(debounceRef.current);
   }, [termo]);
 
-  function addRecente(t, icone) {
-    const novo = [{ termo: t, icone }, ...recentes.filter((r) => r.termo !== t)].slice(0, 5);
-    setRecentes(novo);
-    salvarRecentes(novo);
-  }
-
   async function executarBusca(t) {
     const myId = ++searchIdRef.current;
     const modo = ehCpf(t) ? "cpf" : "nome";
@@ -74,7 +66,6 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
       setLista(res);
       setUltimoTermo(t);
       setPagina(0);
-      addRecente(t, modo === "cpf" ? "badge" : "person_search");
     } catch (err) {
       if (myId === searchIdRef.current) setErro(err.message);
     } finally {
@@ -196,7 +187,7 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
                 <div className="p-2 bg-tertiary-fixed rounded-lg text-on-tertiary-fixed">
                   <span className="material-symbols-outlined">history</span>
                 </div>
-                <h3 className="text-headline-sm text-on-surface">Investigações Recentes</h3>
+                <h3 className="text-headline-sm text-on-surface">Pesquisas Recentes</h3>
               </div>
               {recentes.length === 0 ? (
                 <p className="text-body-sm text-on-surface-variant">Nenhuma pesquisa recente.</p>
@@ -205,7 +196,9 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
                   {recentes.map((r, i) => (
                     <button
                       key={i}
-                      onClick={() => setTermo(r.termo)}
+                      onClick={() => (r.nome || r.cpf)
+                        ? onSelecionarSocio({ nome_socio: r.nome || r.termo, cpf_cnpj_socio: r.cpf })
+                        : setTermo(r.termo)}
                       className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-container transition-colors group text-left"
                     >
                       <div className="flex items-center gap-3">

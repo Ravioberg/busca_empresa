@@ -63,7 +63,13 @@ export default function Sidebar({ tela, irPara, onAbrirEmpresa, onAbrirSocio }) 
       className="fixed left-0 top-0 h-screen w-52 flex flex-col z-40 hidden md:flex select-none"
     >
       {/* Brand */}
-      <div className="flex items-center gap-1.5 px-4 py-[14px] border-b shrink-0" style={S.divider}>
+      <button
+        type="button"
+        onClick={() => irPara("home")}
+        aria-label="Voltar para a página inicial"
+        className="flex items-center gap-1.5 px-4 py-[14px] border-b shrink-0 text-left transition-colors hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+        style={S.divider}
+      >
         <img
           src="/Logo-Pytha.png"
           alt="Pythagoras"
@@ -77,7 +83,7 @@ export default function Sidebar({ tela, irPara, onAbrirEmpresa, onAbrirSocio }) 
             CNPJ Intelligence
           </div>
         </div>
-      </div>
+      </button>
 
       {/* Nav */}
       <nav className="px-3 pt-4 pb-2 shrink-0 space-y-0.5">

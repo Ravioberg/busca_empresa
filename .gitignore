@@ -38,3 +38,6 @@ Template_Relatorio_Projeto_IBM8942.docx
 
 # Logs de runtime (sync_mensal, carga etc.)
 backend/logs/
+
+# Utilitários locais
+keep_awake.ps1

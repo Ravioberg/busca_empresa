@@ -11,8 +11,18 @@ function countNodes(node) {
   return 1 + (node.children || []).reduce((sum, child) => sum + countNodes(child), 0);
 }
 
+function maxDepth(node) {
+  return 1 + Math.max(0, ...(node.children || []).map(maxDepth));
+}
+
 function treeHeight(data) {
-  return Math.max(600, Math.min(4000, countNodes(data) * 45));
+  return Math.max(760, Math.min(7000, countNodes(data) * 82));
+}
+
+function treeWidth(data) {
+  const depth = maxDepth(data);
+  const total = countNodes(data);
+  return Math.max(1120, Math.min(2200, 520 + depth * 360 + total * 6));
 }
 
 function nodeColor(node, depth, rootKind) {
@@ -36,6 +46,9 @@ function styleNode(node, depth, rootKind) {
     label: {
       color,
       fontWeight: depth === 0 ? "bold" : undefined,
+      position: depth <= 1 ? "left" : undefined,
+      align: depth <= 1 ? "right" : undefined,
+      distance: depth === 1 ? 10 : undefined,
     },
   };
 
@@ -69,17 +82,21 @@ function makeOption(styledData, initialDepth) {
       type: "tree",
       data: [styledData],
 
-      top: "3%",
-      left: "14%",
-      bottom: "3%",
-      right: "30%",
+      top: 36,
+      left: "24%",
+      bottom: 36,
+      right: "10%",
 
       orient: "LR",
       edgeShape: "polyline",
-      edgeForkPosition: "55%",
+      edgeForkPosition: "42%",
 
       symbolSize: 7,
       roam: true,
+      scaleLimit: {
+        min: 0.08,
+        max: 2.5,
+      },
 
       label: {
         position: "left",
@@ -88,7 +105,7 @@ function makeOption(styledData, initialDepth) {
         fontSize: labelSize,
         color: "#334155",
         overflow: "truncate",
-        width: 210,
+        width: 240,
       },
 
       leaves: {
@@ -98,7 +115,7 @@ function makeOption(styledData, initialDepth) {
           align: "left",
           fontSize: labelSize,
           overflow: "truncate",
-          width: 240,
+          width: 280,
         },
       },
 
@@ -132,22 +149,69 @@ function useTreeChart(ref, data, rootKind, initialDepth) {
   }, [data, initialDepth, ref, rootKind]);
 }
 
+function Legend({ rootKind }) {
+  const items = rootKind === "empresa"
+    ? [
+        ["Raiz", COR_ROOT],
+        ["Sócio atual", COR_SOCIO],
+        ["Ex-sócio", COR_EX],
+        ["Empresa relacionada", COR_EMPRESA],
+      ]
+    : [
+        ["Raiz", COR_ROOT],
+        ["Empresa atual", COR_EMPRESA],
+        ["Ex-empresa", COR_INATIVA],
+        ["Sócio relacionado", COR_SOCIO],
+        ["Ex-sócio relacionado", COR_EX],
+      ];
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 pt-2 text-[11px] text-slate-500">
+      {items.map(([label, color]) => (
+        <span key={label} className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function TreeViewport({ children, width }) {
+  return (
+    <div
+      className="w-full overflow-hidden cursor-grab active:cursor-grabbing"
+      style={{ height: 420 }}
+    >
+      <div style={{ width: `${width}px`, maxWidth: "none" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function RedeEmpresa({ data }) {
   const ref = useRef(null);
   const treeData = useMemo(() => {
     if (!data) return null;
     return {
       ...data,
-      children: (data.children || []).map(socio => ({
-        ...socio,
-        collapsed: true,
-      })),
+      children: data.children || [],
     };
   }, [data]);
 
-  useTreeChart(ref, treeData, "empresa", 1);
+  useTreeChart(ref, treeData, "empresa", 2);
+  const width = treeData ? treeWidth(treeData) : 1120;
+  const height = treeData ? treeHeight(treeData) : 560;
 
-  return <div ref={ref} style={{ width: "100%", height: treeData ? treeHeight(treeData) : 560 }} />;
+  return (
+    <div>
+      <Legend rootKind="empresa" />
+      <TreeViewport width={width}>
+        <div ref={ref} style={{ width: `${width}px`, height }} />
+      </TreeViewport>
+    </div>
+  );
 }
 
 export function RedeSocio({ perfil }) {
@@ -173,7 +237,6 @@ export function RedeSocio({ perfil }) {
       name: empresa.razao_social || empresa.cnpj_basico,
       value: ativa ? "empresa" : "empresa_inativa",
       detail: ativa ? "Empresa" : "Ex-empresa",
-      collapsed: true,
       children: sociosDaEmpresa(empresa.cnpj_basico),
     });
 
@@ -187,7 +250,16 @@ export function RedeSocio({ perfil }) {
     };
   }, [perfil]);
 
-  useTreeChart(ref, treeData, "socio", 1);
+  useTreeChart(ref, treeData, "socio", 2);
+  const width = treeData ? treeWidth(treeData) : 1120;
+  const height = treeData ? treeHeight(treeData) : 560;
 
-  return <div ref={ref} style={{ width: "100%", height: treeData ? treeHeight(treeData) : 560 }} />;
+  return (
+    <div>
+      <Legend rootKind="socio" />
+      <TreeViewport width={width}>
+        <div ref={ref} style={{ width: `${width}px`, height }} />
+      </TreeViewport>
+    </div>
+  );
 }

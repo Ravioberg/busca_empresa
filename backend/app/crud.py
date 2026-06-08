@@ -407,6 +407,11 @@ def get_empresa_rede(db: Session, cnpj: str) -> dict | None:
     cnpj_basico = cnpj_clean[:8]
 
     empresa = db.query(Empresa).filter(Empresa.cd_cnpjbasico == cnpj_basico).first()
+    estab_raiz = db.query(Estabelecimento).filter(
+        Estabelecimento.cd_cnpjbasico == cnpj_basico,
+        Estabelecimento.cd_cnpjordem == "0001",
+    ).first()
+    empresa_encerrada = (estab_raiz.cd_situacaocadastral if estab_raiz else None) in ("01", "08")
     nome_raiz = (empresa.nm_razaosocial if empresa else None) or cnpj_basico
 
     rows = db.execute(text("""
@@ -414,6 +419,9 @@ def get_empresa_rede(db: Session, cnpj: str) -> dict | None:
             s1.nm_nomesociorazaosocial  AS socio_nome,
             s1.cd_cpfcnpjsocio          AS socio_cpf,
             s1.cd_qualificacaosocio     AS socio_qual,
+            MAX(s1.dt_ultimaatualizacao) OVER (
+                PARTITION BY s1.nm_nomesociorazaosocial, s1.cd_cpfcnpjsocio
+            ) AS socio_ultima,
             s2.cd_cnpjbasico            AS outra_cnpj,
             e2.nm_razaosocial           AS outra_nome,
             est2.cd_situacaocadastral   AS outra_situacao
@@ -427,7 +435,6 @@ def get_empresa_rede(db: Session, cnpj: str) -> dict | None:
             ON  est2.cd_cnpjbasico = s2.cd_cnpjbasico
             AND est2.cd_cnpjordem   = '0001'
         WHERE s1.cd_cnpjbasico       = :basico
-          AND s1.dt_ultimaatualizacao = :mes
           AND s1.cd_cpfcnpjsocio IS NOT NULL
           AND s1.cd_cpfcnpjsocio != ''
         ORDER BY s1.nm_nomesociorazaosocial, e2.nm_razaosocial
@@ -440,12 +447,22 @@ def get_empresa_rede(db: Session, cnpj: str) -> dict | None:
         nome = row[0] or "—"
         qual = row[2]
         if cpf not in socios_map:
-            socios_map[cpf] = {"nome": nome, "qual": qual, "empresas": {}}
-        outra_cnpj = row[3]
+            socios_map[cpf] = {
+                "nome": nome,
+                "qual": qual,
+                "ultima": row[3],
+                "ativo": row[3] == mes_atual and not empresa_encerrada,
+                "empresas": {},
+            }
+        elif (row[3] or "") > (socios_map[cpf].get("ultima") or ""):
+            socios_map[cpf]["qual"] = qual
+            socios_map[cpf]["ultima"] = row[3]
+            socios_map[cpf]["ativo"] = row[3] == mes_atual and not empresa_encerrada
+        outra_cnpj = row[4]
         if outra_cnpj and outra_cnpj not in socios_map[cpf]["empresas"]:
             socios_map[cpf]["empresas"][outra_cnpj] = {
-                "nome":     row[4] or outra_cnpj,
-                "situacao": SITUACAO.get(row[5], row[5]) if row[5] else "—",
+                "nome":     row[5] or outra_cnpj,
+                "situacao": SITUACAO.get(row[6], row[6]) if row[6] else "—",
             }
 
     socios_list = sorted(
@@ -461,7 +478,8 @@ def get_empresa_rede(db: Session, cnpj: str) -> dict | None:
         ]
         children.append({
             "name":     s["nome"],
-            "value":    _qual_desc(s["qual"]) or "Sócio",
+            "value":    "socio" if s["ativo"] else "ex_socio",
+            "detail":   _qual_desc(s["qual"]) or ("Sócio" if s["ativo"] else "Ex-sócio"),
             "children": emp_children,
         })
 
@@ -1359,6 +1377,7 @@ def get_perfil_socio(db: Session, cpf: str | None = None, nome: str | None = Non
         rows = db.execute(text(f"""
             SELECT s.nm_nomesociorazaosocial, s.cd_cpfcnpjsocio,
                    COUNT(DISTINCT s.cd_cnpjbasico) AS n_comuns,
+                   GROUP_CONCAT(DISTINCT s.cd_cnpjbasico) AS cnpjs,
                    GROUP_CONCAT(DISTINCT s.cd_qualificacaosocio) AS quals
             FROM socio s
             WHERE s.cd_cnpjbasico IN ({in_clause})
@@ -1379,6 +1398,7 @@ def get_perfil_socio(db: Session, cpf: str | None = None, nome: str | None = Non
                 "nome": row.nm_nomesociorazaosocial,
                 "cpf":  row.cd_cpfcnpjsocio,
                 "empresas_em_comum": row.n_comuns,
+                "cnpjs": [c for c in (row.cnpjs or "").split(",") if c],
                 "qualificacoes": quals,
             })
         return result

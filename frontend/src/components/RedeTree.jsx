@@ -1,80 +1,82 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as echarts from "echarts";
 
-// Cores por profundidade e tipo
-const COR_ROOT    = "#0a1f3d";
-const COR_SOCIO   = "#0085ca";
-const COR_ATIVA   = "#15803d";
+const COR_ROOT = "#0a1f3d";
+const COR_SOCIO = "#0085ca";
+const COR_EMPRESA = "#15803d";
+const COR_EX = "#64748b";
 const COR_INATIVA = "#94a3b8";
-const COR_GROUP   = "#64748b";
 
-function styleEmpresaNode(node, depth) {
-  const n = { ...node };
-  if (depth === 0) {
-    n.symbolSize = 14;
-    n.itemStyle  = { color: COR_ROOT };
-    n.label      = { fontWeight: "bold", color: COR_ROOT };
-  } else if (depth === 1) {
-    n.symbolSize = 9;
-    n.itemStyle  = { color: COR_SOCIO };
-    n.label      = { color: COR_SOCIO };
-  } else {
-    const ativa  = node.value === "Ativa";
-    n.symbolSize = 6;
-    n.itemStyle  = { color: ativa ? COR_ATIVA : COR_INATIVA };
-    n.label      = { color: ativa ? COR_ATIVA : COR_INATIVA };
-  }
-  if (node.children?.length) {
-    n.children = node.children.map(c => styleEmpresaNode(c, depth + 1));
-  }
-  return n;
+function countNodes(node) {
+  return 1 + (node.children || []).reduce((sum, child) => sum + countNodes(child), 0);
 }
 
-function styleSocioNode(node, depth) {
-  const n = { ...node };
-  if (depth === 0) {
-    n.symbolSize = 14;
-    n.itemStyle  = { color: COR_ROOT };
-    n.label      = { fontWeight: "bold", color: COR_ROOT };
-  } else if (depth === 1) {
-    // grupo: "Empresas" ou "Sócios em Comum"
-    n.symbolSize = 8;
-    n.itemStyle  = { color: COR_GROUP };
-    n.label      = { fontWeight: "600", color: COR_GROUP };
-  } else {
-    const isSocio = node.value === "socio";
-    n.symbolSize  = 6;
-    n.itemStyle   = { color: isSocio ? COR_SOCIO : COR_ATIVA };
-    n.label       = { color: isSocio ? COR_SOCIO : COR_ATIVA };
+function treeHeight(data) {
+  return Math.max(600, Math.min(4000, countNodes(data) * 45));
+}
+
+function nodeColor(node, depth, rootKind) {
+  if (depth === 0) return COR_ROOT;
+
+  if (rootKind === "empresa") {
+    if (depth === 1) return node.value === "ex_socio" ? COR_EX : COR_SOCIO;
+    return node.value === "Ativa" || node.value === "empresa" ? COR_EMPRESA : COR_INATIVA;
   }
+
+  if (depth === 1) return node.value === "empresa" ? COR_EMPRESA : COR_INATIVA;
+  return node.value === "ex_socio" ? COR_EX : COR_SOCIO;
+}
+
+function styleNode(node, depth, rootKind) {
+  const color = nodeColor(node, depth, rootKind);
+  const styled = {
+    ...node,
+    symbolSize: depth === 0 ? 14 : depth === 1 ? 9 : 6,
+    itemStyle: { color },
+    label: {
+      color,
+      fontWeight: depth === 0 ? "bold" : undefined,
+    },
+  };
+
   if (node.children?.length) {
-    n.children = node.children.map(c => styleSocioNode(c, depth + 1));
+    styled.children = node.children.map(child => styleNode(child, depth + 1, rootKind));
   }
-  return n;
+
+  return styled;
 }
 
 function makeOption(styledData, initialDepth) {
+  const totalNodes = countNodes(styledData);
+  const labelSize = totalNodes > 90 ? 10 : 11;
+
   return {
     tooltip: {
       trigger: "item",
       triggerOn: "mousemove",
-      formatter: (p) => p.data.value && p.data.value !== "root" && p.data.value !== "socio"
-        ? `<b>${p.data.name}</b><br/><span style="color:#64748b">${p.data.value}</span>`
-        : `<b>${p.data.name}</b>`,
+      formatter: (p) => {
+        const detail = p.data.detail || (
+          p.data.value && !["root", "socio", "ex_socio", "empresa", "empresa_inativa"].includes(p.data.value)
+            ? p.data.value
+            : ""
+        );
+        return detail
+          ? `<b>${p.data.name}</b><br/><span style="color:#64748b">${detail}</span>`
+          : `<b>${p.data.name}</b>`;
+      },
     },
     series: [{
       type: "tree",
       data: [styledData],
 
       top: "3%",
-      left: "18%",
+      left: "14%",
       bottom: "3%",
-      right: "22%",
+      right: "30%",
 
       orient: "LR",
-
-      layerPadding: 180, // aumenta distância entre níveis
-      nodePadding: 40,   // aumenta distância entre irmãos
+      edgeShape: "polyline",
+      edgeForkPosition: "55%",
 
       symbolSize: 7,
       roam: true,
@@ -83,8 +85,10 @@ function makeOption(styledData, initialDepth) {
         position: "left",
         verticalAlign: "middle",
         align: "right",
-        fontSize: 11,
+        fontSize: labelSize,
         color: "#334155",
+        overflow: "truncate",
+        width: 210,
       },
 
       leaves: {
@@ -92,7 +96,9 @@ function makeOption(styledData, initialDepth) {
           position: "right",
           verticalAlign: "middle",
           align: "left",
-          fontSize: 11,
+          fontSize: labelSize,
+          overflow: "truncate",
+          width: 240,
         },
       },
 
@@ -105,74 +111,83 @@ function makeOption(styledData, initialDepth) {
   };
 }
 
-export function RedeEmpresa({ data }) {
-  const ref      = useRef(null);
+function useTreeChart(ref, data, rootKind, initialDepth) {
   const chartRef = useRef(null);
 
   useEffect(() => {
-    if (!ref.current || !data) return;
+    if (!ref.current || !data) return undefined;
+
     chartRef.current?.dispose();
     const chart = echarts.init(ref.current);
     chartRef.current = chart;
-    chart.setOption(makeOption(styleEmpresaNode(data, 0), 1));
+    chart.setOption(makeOption(styleNode(data, 0, rootKind), initialDepth));
+
     const onResize = () => chart.resize();
     window.addEventListener("resize", onResize);
-    return () => { window.removeEventListener("resize", onResize); chart.dispose(); };
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      chart.dispose();
+    };
+  }, [data, initialDepth, ref, rootKind]);
+}
+
+export function RedeEmpresa({ data }) {
+  const ref = useRef(null);
+  const treeData = useMemo(() => {
+    if (!data) return null;
+    return {
+      ...data,
+      children: (data.children || []).map(socio => ({
+        ...socio,
+        collapsed: true,
+      })),
+    };
   }, [data]);
 
-  return <div ref={ref} style={{ width: "100%", height: 560 }} />;
+  useTreeChart(ref, treeData, "empresa", 1);
+
+  return <div ref={ref} style={{ width: "100%", height: treeData ? treeHeight(treeData) : 560 }} />;
 }
 
 export function RedeSocio({ perfil }) {
-  const ref      = useRef(null);
-  const chartRef = useRef(null);
+  const ref = useRef(null);
+  const treeData = useMemo(() => {
+    if (!perfil) return null;
 
-  useEffect(() => {
-    if (!ref.current || !perfil) return;
+    const sociosRelacionados = [
+      ...(perfil.socios_comuns || []).map(s => ({ ...s, value: "socio", detail: "Socio relacionado" })),
+      ...(perfil.ex_socios_comuns || []).map(s => ({ ...s, value: "ex_socio", detail: "Ex-socio relacionado" })),
+    ];
 
-    const empresasAtivas = (perfil.empresas_ativas || []).map(e => ({
-      name:  e.razao_social || e.cnpj_basico,
-      value: "empresa",
-    }));
-    const empresasInativas = (perfil.empresas_inativas || []).map(e => ({
-      name:  e.razao_social || e.cnpj_basico,
-      value: "empresa_inativa",
-    }));
-    const sociosComuns = (perfil.socios_comuns || []).map(s => ({
-      name:  s.nome,
-      value: "socio",
-    }));
-    const exSociosComuns = (perfil.ex_socios_comuns || []).map(s => ({
-      name:  s.nome,
-      value: "socio",
-    }));
+    const sociosDaEmpresa = (cnpjBasico) => sociosRelacionados
+      .filter(s => (s.cnpjs || []).includes(cnpjBasico))
+      .slice(0, 40)
+      .map(s => ({
+        name: s.nome,
+        value: s.value,
+        detail: (s.qualificacoes || []).join(", ") || s.detail,
+      }));
 
-    const nome = perfil.info?.nome || "Sócio";
+    const mapEmpresa = (empresa, ativa) => ({
+      name: empresa.razao_social || empresa.cnpj_basico,
+      value: ativa ? "empresa" : "empresa_inativa",
+      detail: ativa ? "Empresa" : "Ex-empresa",
+      collapsed: true,
+      children: sociosDaEmpresa(empresa.cnpj_basico),
+    });
 
-    const children = [];
-    if (empresasAtivas.length) {
-      children.push({ name: `Empresas Ativas (${empresasAtivas.length})`, value: "group", children: empresasAtivas });
-    }
-    if (empresasInativas.length) {
-      children.push({ name: `Ex-Empresas (${empresasInativas.length})`, value: "group", children: empresasInativas });
-    }
-    if (sociosComuns.length) {
-      children.push({ name: `Sócios em Comum (${sociosComuns.length})`, value: "group", children: sociosComuns });
-    }
-    if (exSociosComuns.length) {
-      children.push({ name: `Ex-Sócios em Comum (${exSociosComuns.length})`, value: "group", children: exSociosComuns });
-    }
-
-    const root = { name: nome, value: "root", children };
-
-    chartRef.current?.dispose();
-    const chart = echarts.init(ref.current);
-    chartRef.current = chart;
-    chart.setOption(makeOption(styleSocioNode(root, 0), 2));
-    const onResize = () => chart.resize();
-    window.addEventListener("resize", onResize);
-    return () => { window.removeEventListener("resize", onResize); chart.dispose(); };
+    return {
+      name: perfil.info?.nome || "Socio",
+      value: "root",
+      children: [
+        ...(perfil.empresas_ativas || []).map(e => mapEmpresa(e, true)),
+        ...(perfil.empresas_inativas || []).map(e => mapEmpresa(e, false)),
+      ],
+    };
   }, [perfil]);
 
-  return <div ref={ref} style={{ width: "100%", height: 560 }} />;
+  useTreeChart(ref, treeData, "socio", 1);
+
+  return <div ref={ref} style={{ width: "100%", height: treeData ? treeHeight(treeData) : 560 }} />;
 }

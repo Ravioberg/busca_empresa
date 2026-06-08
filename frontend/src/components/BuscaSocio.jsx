@@ -28,7 +28,7 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState(null);
   // Recentes refletem cliques em perfil (gravados via App.jsx).
-  const [recentes] = useState(lerRecentes);
+  const [recentes, setRecentes] = useState(lerRecentes);
 
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
@@ -79,6 +79,11 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
     if (!t || t.length < 3) return;
     clearTimeout(debounceRef.current);
     executarBusca(t);
+  }
+
+  function limparHistorico() {
+    localStorage.removeItem("ci_recentes_socio");
+    setRecentes([]);
   }
 
   async function mudarPagina(nova) {
@@ -183,11 +188,23 @@ export default function BuscaSocio({ onSelecionarSocio, onVoltar }) {
         {!lista && !loading && termo.trim().length < 3 && (
           <div className="w-full max-w-3xl mx-auto mt-[60px] grid grid-cols-1 md:grid-cols-3 gap-gutter">
             <div className="md:col-span-3 bg-surface-container-lowest rounded-xl p-space-lg shadow-ambient border border-surface-variant">
-              <div className="flex items-center gap-3 mb-space-md">
-                <div className="p-2 bg-tertiary-fixed rounded-lg text-on-tertiary-fixed">
-                  <span className="material-symbols-outlined">history</span>
+              <div className="flex items-center justify-between gap-3 mb-space-md">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-tertiary-fixed rounded-lg text-on-tertiary-fixed">
+                    <span className="material-symbols-outlined">history</span>
+                  </div>
+                  <h3 className="text-headline-sm text-on-surface">Pesquisas Recentes</h3>
                 </div>
-                <h3 className="text-headline-sm text-on-surface">Pesquisas Recentes</h3>
+                {recentes.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={limparHistorico}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-body-sm font-medium text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[17px]">delete</span>
+                    Limpar Histórico
+                  </button>
+                )}
               </div>
               {recentes.length === 0 ? (
                 <p className="text-body-sm text-on-surface-variant">Nenhuma pesquisa recente.</p>

@@ -239,7 +239,23 @@ function useTreeChart(ref, data, rootKind, initialDepth, onVerEmpresa, onVerSoci
 
   useEffect(() => {
     if (!chartRef.current || !data) return;
-    chartRef.current.setOption(makeOption(styleNode(data, 0, rootKind), initialDepth));
+    const chart = chartRef.current;
+
+    // O container muda de tamanho entre filtros (treeWidth/treeHeight dependem
+    // do nº de nós). Sem chart.resize(), o canvas interno do ECharts mantém
+    // as dimensões antigas e a árvore acaba renderizada fora do viewport —
+    // efeito de "sumir" depois de qualquer toggle de filtro.
+    chart.resize();
+
+    // Preserva zoom/center que o usuário ajustou via pan/zoom manual.
+    // Sem isso, o setOption a cada filtro reaplica `zoom: TREE_ZOOM` (0.1)
+    // e o mapa volta ao tamanho minúsculo do estado inicial.
+    const prev = chart.getOption()?.series?.[0];
+    const opt = makeOption(styleNode(data, 0, rootKind), initialDepth);
+    if (prev?.zoom != null) opt.series[0].zoom = prev.zoom;
+    if (prev?.center != null) opt.series[0].center = prev.center;
+
+    chart.setOption(opt);
   }, [data, rootKind, initialDepth]);
 }
 
@@ -318,8 +334,11 @@ export function RedeEmpresa({ data, onVerEmpresa, onVerSocio }) {
   }, [data, filtros]);
 
   useTreeChart(ref, treeData, "empresa", 2, onVerEmpresa, onVerSocio);
-  const width = treeData ? treeWidth(treeData) : 1120;
-  const height = treeData ? treeHeight(treeData) : 560;
+  // Dimensões baseadas na árvore COMPLETA (raw), não na filtrada — assim o
+  // canvas mantém o mesmo tamanho ao alternar filtros, e os offsets do
+  // TreeViewport não fazem a árvore "pular" de posição.
+  const width = data ? treeWidth(data) : 1120;
+  const height = data ? treeHeight(data) : 560;
 
   return (
     <div>
@@ -381,8 +400,10 @@ export function RedeSocio({ perfil, onVerEmpresa, onVerSocio }) {
   );
 
   useTreeChart(ref, treeData, "socio", 2, onVerEmpresa, onVerSocio);
-  const width = treeData ? treeWidth(treeData) : 1120;
-  const height = treeData ? treeHeight(treeData) : 560;
+  // Dimensões da árvore COMPLETA (rawTree) pra manter canvas estável
+  // entre filtros — evita que a árvore "pule" de posição.
+  const width = rawTree ? treeWidth(rawTree) : 1120;
+  const height = rawTree ? treeHeight(rawTree) : 560;
 
   return (
     <div>
